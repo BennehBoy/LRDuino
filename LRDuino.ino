@@ -1,11 +1,13 @@
 // LRDuino by Ben Anderson
-// Version 0.83
+// Version 0.84
 // Reworked to use Adafruit 31856 Library
 // Moved OLED_RESET from 13 to 14 to stop illumination of onboard LED
 // Changed scalerange from float to int
 // Added Fault code & moved warning animation into a function
 // Got NTC temp working correctly
 // made public on github
+// Added low coolant warning, &assoicated variables & functions - shows on display1 only
+// fixed bug in doWarnings() where we were directly referencing display 1 & 3 rather than passing in a reference to the display that we wanted to draw on
 
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_MAX31856.h>
@@ -108,19 +110,19 @@ const unsigned char PROGMEM NoConn [] = {
 0x00, 0x00, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00, 
 };
 
-// This is all the parameters and variables for our sensors - from 0 to 4
+// This is all the parameters and variables for our sensors - collumn 6 is a dummy for a boolean input (Engine Coolant Level)
 
-//                                    Turbo     Tbox temp     EGT       Oil Press   Oil Temp
-bool warnhistatus[] =                 { false,    false,        false,    false,      false   }; // flag for alteranting warning animations
-uint8_t sensefault[]=                 { 0,        0,            0,        0,          0       }; // flag set when sensor in error state.
-const unsigned char* senseglyphs[] =  { trbBMP,   tboxBMP,      egtBMP,   eopBMP,     eotBMP  }; // pointers to our bitmaps
-int sensevals[] =                     { 0,        0,            -20,      50,         101     }; // bogus start values for debug
-const bool senseunits[] =             { true,     false,        false,    true,       false   }; // 0 for C 1 for psi units to print for each sensor
-const int sensemaxvals[] =            { 32,       150,          900,      72,         150     }; // the maximum scale to use in our graph for each sensor
-const int8_t senseminvals[] =         { 0,        -40,          -40,      0,          -40     }; // the minimum scale to use in our graph for each sensor
-int sensepeakvals[] =                 { 0,        -40,          -40,      0,          -40     }; // somewhere for us to store peak values
-const int sensewarnhivals[] =         { 30,       140,          750,      60,         100     }; // values from RAVE that we want to warn of HIGH vals
-//int sensewarnlowvals[] =            { -999,     -999,         -999,     9,          -999    }; // values from RAVE that we want to warn of LOW vals (set to outside range for no warning)
+//                                    Turbo       Tbox temp     EGT       Oil Press   Oil Temp  Cool Lev
+bool warnhistatus[] =                 { false,    false,        false,    false,      false,    false   }; // flag for alteranting warning animations
+uint8_t sensefault[]=                 { 0,        0,            0,        0,          0,        0       }; // flag set when sensor in error state.
+const unsigned char* senseglyphs[] =  { trbBMP,   tboxBMP,      egtBMP,   eopBMP,     eotBMP,   triBMP  }; // pointers to our bitmaps
+int sensevals[] =                     { 0,        0,            -20,      50,         101,      0       }; // bogus start values for debug
+const bool senseunits[] =             { true,     false,        false,    true,       false,    0       }; // 0 for C 1 for psi units to print for each sensor
+const int sensemaxvals[] =            { 32,       150,          900,      72,         150,      1       }; // the maximum scale to use in our graph for each sensor
+const int8_t senseminvals[] =         { 0,        -40,          -40,      0,          -40,      0       }; // the minimum scale to use in our graph for each sensor
+int sensepeakvals[] =                 { 0,        -40,          -40,      0,          -40,      1       }; // somewhere for us to store peak values
+const int sensewarnhivals[] =         { 30,       140,          750,      60,         100,      999     }; // values from RAVE that we want to warn of HIGH vals
+//int sensewarnlowvals[] =            { -999,     -999,         -999,     9,          -999,     0       }; // values from RAVE that we want to warn of LOW vals (set to outside range for no warning)
 
 uint8_t rotation = 0; // incremented by 1 with each button press, resets to 0 after 5
 
@@ -132,7 +134,7 @@ int atmos = 215;                //somewhere to store our startup atmospheric pre
 
 void setup()   {
   //start serial connection
-  //Serial.begin(9600);  uncomment to send serial debug info
+  //Serial.begin(9600);  //uncomment to send serial debug info
   
   // by default, we'll generate the high voltage from the 3.3v line internally! (neat!)  
   display1.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, true);
@@ -202,6 +204,9 @@ void loop() {
     sensevals[4] = readERR2081(4); // read A4, currently the Engine oil temp sensor
     updatePEAK(4); // OIL TEMP
 
+    sensevals[5] = int(readCoolantLevel(6)); // read A6, to check if coolant level is low
+    //updatePEAK(5); // Coolant Level - no need to set a max as this is boolean
+
     // DRAW DISPLAYS
     drawDISPLAY1();
     drawDISPLAY2();
@@ -212,7 +217,7 @@ void loop() {
 void drawDISPLAY1(void) { // DISPLAY 1 is our Main guage display
   // probably lots of room for improvement
   int padding = 0;
-  int scalerange = 0;
+  float scalerange = 0;
   int scaleposmin = 0;
   uint8_t sensor0 = posrot(1);
 
@@ -221,8 +226,6 @@ void drawDISPLAY1(void) { // DISPLAY 1 is our Main guage display
   display1.setTextWrap(false);
 
   display1.setCursor(38, 7);
-  //display1.println(String(sensevals[sensor0]) + units(sensor0)); // print current sensor value & units
-
   display1.println(valIfnoErr(sensor0) + units(sensor0)); // print current sensor value & units
   display1.drawBitmap(0, 0, senseglyphs[sensor0], 32, 32, WHITE); // draw bitmap for current sensor
 
@@ -265,7 +268,15 @@ void drawDISPLAY1(void) { // DISPLAY 1 is our Main guage display
   display1.setCursor(100 + padding, 57);
   display1.println(String(sensemaxvals[sensor0])); // draw the maximum value
 
-  doWarnings(sensor0, 100, 4);
+  doWarnings(sensor0, 100, 4, display1);
+
+  // Coolant warning - only write this to display1!
+  if (faultWARN(6)==1) {
+    display1.setCursor(34, 43);
+    display1.setTextColor(BLACK,WHITE);
+    display1.println("Coolant Low");
+    // Play a buzzer sound with tone()
+  }  
  
   display1.display();
   display1.clearDisplay();
@@ -285,20 +296,21 @@ void drawDISPLAY2(void) { // DISPLAY 2 shows 2 sensors
   display2.drawBitmap(0, 0, senseglyphs[sensor2], 32, 32, WHITE);
 
   // DO sensor2 warnings
-  doWarnings(sensor2, 100, 4);
-
+  doWarnings(sensor2, 100, 4, display2);
+  
+  display3.setTextSize(2);
+  display3.setTextColor(WHITE);
+  display3.setTextWrap(false);
   display2.setCursor(64, 42);
   display2.println(valIfnoErr(sensor5) + units(sensor5));
   display2.drawBitmap(24, 33, senseglyphs[sensor5], 32, 32, WHITE);
 
   // DO sensor5 warnings
-  doWarnings(sensor5, 0, 36);
+  doWarnings(sensor5, 0, 36, display2);
   
   display2.display();
   display2.clearDisplay();
 }
-
-
 
 void drawDISPLAY3(void) { // DISPLAY 3 shows 2 sensors
   uint8_t sensor3 = posrot(3);
@@ -312,14 +324,17 @@ void drawDISPLAY3(void) { // DISPLAY 3 shows 2 sensors
   display3.drawBitmap(0, 0, senseglyphs[sensor3], 32, 32, WHITE);
 
   // DO sensor3 warnings
-  doWarnings(sensor3, 100, 4);
+  doWarnings(sensor3, 100, 4, display3);
 
+  display3.setTextSize(2);
+  display3.setTextColor(WHITE);
+  display3.setTextWrap(false);
   display3.setCursor(64, 42);
   display3.println(valIfnoErr(sensor4) + units(sensor4));
   display3.drawBitmap(24, 33, senseglyphs[sensor4], 32, 32, WHITE);
 
   // DO sensor4 warnings
-  doWarnings(sensor4, 0, 36);
+  doWarnings(sensor4, 0, 36, display3);
   
   display3.display();
   display3.clearDisplay();
@@ -327,14 +342,14 @@ void drawDISPLAY3(void) { // DISPLAY 3 shows 2 sensors
 
 // Helper Functions
 
-void doWarnings(uint8_t sensorZ, uint8_t x, uint8_t y) {
+void doWarnings(uint8_t sensorZ, uint8_t x, uint8_t y, Adafruit_SSD1306 &refDisp) {
   // this function draws an icon and co-ords x,y if there is an error state set
   
   if (highWARN(sensorZ)) {
-    display3.drawBitmap(x, y, triBMP, 24, 24, WHITE); //outut the warning triangle
+    refDisp.drawBitmap(x, y, triBMP, 24, 24, WHITE); //outut the warning triangle
   }
   if (faultWARN(sensorZ)==1) {
-    display1.drawBitmap(x, y, NoConn, 24, 24, WHITE);
+    refDisp.drawBitmap(x, y, NoConn, 24, 24, WHITE); //output the disconnected sensor icon
   }
   // LOW VALUE WARNING
   //  if (sensevals[sensor0] < sensewarnlowvals[sensor0]) {
@@ -461,7 +476,8 @@ int readERR2081(uint8_t sensorPin) {
   } else {
     sensefault[sensorPin]=0; // no fault
   }
-  return (int(steinhart)); // read the input pin for the temp sensor
+  //return (int(steinhart)); // read the input pin for the temp sensor
+  return (55);
 }
 
 
@@ -511,4 +527,19 @@ int readPress(uint8_t sensorPin) {
   return (p);
 }
 
+bool readCoolantLevel(uint8_t sensorPin) {
+  // placeholder function
+  // sensor is normally closed
+  // use a pulldown resistor to enable fault monitoring
+  int CoolantLevel;
+  CoolantLevel = analogRead(sensorPin);
+
+  // process any faults
+  if (CoolantLevel <512) { // if we're pulled low then either the sensor is signalling low collant, or we have a continuity issue
+    toggleFault(sensorPin);
+    return (false);
+  } 
+  sensefault[sensorPin]=0; // no fault
+  return (true);
+}
 
