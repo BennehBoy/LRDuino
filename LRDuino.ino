@@ -1,5 +1,5 @@
 // LRDuino by Ben Anderson
-// Version 0.84
+// Version 0.85
 // Reworked to use Adafruit 31856 Library
 // Moved OLED_RESET from 13 to 14 to stop illumination of onboard LED
 // Changed scalerange from float to int
@@ -9,6 +9,7 @@
 // Added low coolant warning, &assoicated variables & functions - shows on display1 only
 // fixed bug in doWarnings() where we were directly referencing display 1 & 3 rather than passing in a reference to the display that we wanted to draw on
 // reverted scalerange change to int back to float - graph was drawing only at left
+// Fault signals now reset max recorded values to the minimum of the scalerange
 
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_MAX31856.h>
@@ -473,7 +474,8 @@ int readERR2081(uint8_t sensorPin) {
   // Sensors should be connected with a 1K pulldown resistor - if there's is a connection fault a low raw read will indicate this.
   if (raw <10) {
     toggleFault(sensorPin);
-    steinhart = 0.0;
+    sensepeakvals[sensorPin]=senseminvals[sensorPin];
+    steinhart = senseminvals[sensorPin];
   } else {
     sensefault[sensorPin]=0; // no fault
   }
@@ -491,7 +493,8 @@ int readBoost(uint8_t sensorPin) {
   boost = kpaval * 0.145038 - 14.5038; // Convert to psi and subtract atmospheric (sensor is absolute pressure)
   if (rawval <10) {
     toggleFault(sensorPin);
-    boost = 0;
+    sensepeakvals[sensorPin]=senseminvals[sensorPin];
+    boost = senseminvals[sensorPin];
   } else {
     sensefault[sensorPin]=0; // no fault
   }
@@ -505,7 +508,8 @@ int readMAX(uint8_t sensorPin) {
   // process any faults
   if (fault) {
     toggleFault(sensorPin);
-    t=0;
+    sensepeakvals[sensorPin]=senseminvals[sensorPin];
+    t=senseminvals[sensorPin];
   } else {
     sensefault[sensorPin]=0; // no fault 
   }
@@ -520,7 +524,8 @@ int readPress(uint8_t sensorPin) {
   // process any faults
   if (p <10) {
     toggleFault(sensorPin);
-    p=0;
+    sensepeakvals[sensorPin]=senseminvals[sensorPin];
+    p=senseminvals[sensorPin];
   } else {
     sensefault[sensorPin]=0; // no fault 
   }
