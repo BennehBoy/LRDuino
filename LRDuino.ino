@@ -8,6 +8,7 @@
 // made public on github
 // Added low coolant warning, &assoicated variables & functions - shows on display1 only
 // fixed bug in doWarnings() where we were directly referencing display 1 & 3 rather than passing in a reference to the display that we wanted to draw on
+// reverted scalerange change to int back to float - graph was drawing only at left
 
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_MAX31856.h>
@@ -476,8 +477,7 @@ int readERR2081(uint8_t sensorPin) {
   } else {
     sensefault[sensorPin]=0; // no fault
   }
-  //return (int(steinhart)); // read the input pin for the temp sensor
-  return (55);
+  return (int(steinhart)); // read the input pin for the temp sensor
 }
 
 
