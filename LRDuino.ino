@@ -1,5 +1,5 @@
 // LRDuino by Ben Anderson
-// Version 0.85
+// Version 0.86
 // Reworked to use Adafruit 31856 Library
 // Moved OLED_RESET from 13 to 14 to stop illumination of onboard LED
 // Changed scalerange from float to int
@@ -12,13 +12,18 @@
 // Fault signals now reset max recorded values to the minimum of the scalerange
 // Fixed bug with screen rotation - it's not a good idea values outside of the bounds of and array! "if (faultWARN(6)==1)"
 // Fixed bug analogue inputs need to correspond to their analogue pin, this is because the code implicitly expects them on those...
+// Decoupled sensor input pins from array index - read functions now need to also be passed the array index to store data
+// Moved some pins around to accomodate i2c on a4,a5
+// Added initial support for ADXL345 Accelerometer
 
+#include <Wire.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_MAX31856.h>
-
+#include <Adafruit_Sensor.h>
+#include <Adafruit_ADXL345_U.h>
 
 // Following pinout details are for Ardunio Nano - be sure to adjust for your hadrware
-#define OLED_RESET  16  //Analogue 2
+#define OLED_RESET  13  //LED
 #define OLED_CS     12
 #define OLED_DC     11  //MISO DC
 #define OLED_CLK    10  //D0
@@ -36,6 +41,8 @@ Adafruit_MAX31856 max = Adafruit_MAX31856(MAX_CS, MAX_DC, MAX_MOSI, MAX_CLK); //
 Adafruit_SSD1306 display1(OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS);
 Adafruit_SSD1306 display2(OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS_2);
 Adafruit_SSD1306 display3(OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS_3);
+
+Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
 
 #if (SSD1306_LCDHEIGHT != 64)
 #error("Height incorrect, please fix Adafruit_SSD1306.h!");
@@ -152,12 +159,14 @@ void setup()   {
   //configure pin8 as an input and enable the internal pull-up resistor, this is for a button to control the rotation of sensors around the screen
   pinMode(8, INPUT_PULLUP);
   
-  max.begin(); //initialise the MAX31856 
+  max.begin(); //initialise the MAX31856
+
+  accel.begin(); //initialise ADXL345
 
   max.setThermocoupleType(MAX31856_TCTYPE_K); // and set it to a K-type thermocouple - adjust for you hardware!
   
   // read our boost sensor rawADC value since at this point it should be atmospheric pressure...
-  atmos = readBoost(0);  // not actually used at this point so could be rmeoved
+  atmos = readBoost(0,0);  // not actually used at this point so could be rmeoved
 
   //stop all the unused anlogue pins from floating
   pinMode(A6, OUTPUT);
@@ -188,23 +197,25 @@ void loop() {
 
     // SENSOR READING
 
-    sensevals[0] = readBoost(0); // read boost off A0
+    sensevals[0] = readBoost(0,0); // read boost off A0 and store at index 0
     updatePEAK(0); // TURBO
 
-    sensevals[1] = readERR2081(1); // read A1, currently the Gearbox oil temp sensor
+    sensevals[1] = readERR2081(1,1); // read A1, currently the Gearbox oil temp sensor
     updatePEAK(1); // TBOX OIL TEMP
 
     sensevals[2] = readMAX(2); //read EGT from the Max31856
     updatePEAK(2); // EGT
 
-    sensevals[3] = readPress(3); // placeholder at the moment but should be very similar to the boost reading if a cheap pressure sensor is used (ie one which returns a linear voltage 0-5v based on presure)
+    sensevals[3] = readPress(2,3); // placeholder at the moment but should be very similar to the boost reading if a cheap pressure sensor is used (ie one which returns a linear voltage 0-5v based on presure)
     updatePEAK(3); // OIL PRESSURE
 
-    sensevals[4] = readERR2081(4); // read A4, currently the Engine oil temp sensor
+    sensevals[4] = readERR2081(7,4); // read A7, store at index 4 currently the Engine oil temp sensor
     updatePEAK(4); // OIL TEMP
 
-    sensevals[5] = int(readCoolantLevel(5)); // read A6, to check if coolant level is low
+    sensevals[5] = int(readCoolantLevel(6,5)); // read A6, to check if coolant level is low
     //updatePEAK(5); // Coolant Level - no need to set a max as this is boolean
+
+    readADXL();
 
     // DRAW DISPLAYS
     drawDISPLAY1();
@@ -446,7 +457,7 @@ uint8_t posrot(uint8_t location) { // this is used to shift our array of data ar
 
 // Sensor reading code.
 
-int readERR2081(uint8_t sensorPin) {
+int readERR2081(uint8_t sensorPin, uint8_t index) {
   int raw = 0;           // variable to store the raw ADC input value
   float Vin = 3.3;           // variable to store the measured VCC voltage
   float Vout = 0;        // variable to store the output voltage
@@ -470,17 +481,17 @@ int readERR2081(uint8_t sensorPin) {
   // FAULT checking
   // Sensors should be connected with a 1K pulldown resistor - if there's is a connection fault a low raw read will indicate this.
   if (raw <10) {
-    toggleFault(sensorPin);
-    sensepeakvals[sensorPin]=senseminvals[sensorPin];
-    steinhart = senseminvals[sensorPin];
+    toggleFault(index);
+    sensepeakvals[index]=senseminvals[index];
+    steinhart = senseminvals[index];
   } else {
-    sensefault[sensorPin]=0; // no fault
+    sensefault[index]=0; // no fault
   }
   return (int(steinhart)); // read the input pin for the temp sensor
 }
 
 
-int readBoost(uint8_t sensorPin) {
+int readBoost(uint8_t sensorPin, uint8_t index) {
   int rawval;
   float kpaval;
   float boost;
@@ -489,47 +500,47 @@ int readBoost(uint8_t sensorPin) {
   kpaval = rawval * 0.4878; // convert to kpa
   boost = kpaval * 0.145038 - 14.5038; // Convert to psi and subtract atmospheric (sensor is absolute pressure)
   if (rawval <10) {
-    toggleFault(sensorPin);
-    sensepeakvals[sensorPin]=senseminvals[sensorPin];
-    boost = senseminvals[sensorPin];
+    toggleFault(index);
+    sensepeakvals[sensorPin]=senseminvals[index];
+    boost = senseminvals[index];
   } else {
-    sensefault[sensorPin]=0; // no fault
+    sensefault[index]=0; // no fault
   }
   return (int(boost));
 }
 
-int readMAX(uint8_t sensorPin) {
+int readMAX(uint8_t index) {
   int t;
   t = max.readThermocoupleTemperature();
   uint8_t fault = max.readFault();
   // process any faults
   if (fault) {
-    toggleFault(sensorPin);
-    sensepeakvals[sensorPin]=senseminvals[sensorPin];
-    t=senseminvals[sensorPin];
+    toggleFault(index);
+    sensepeakvals[index]=senseminvals[index];
+    t=senseminvals[index];
   } else {
-    sensefault[sensorPin]=0; // no fault 
+    sensefault[index]=0; // no fault 
   }
   return (t);
 }
 
-int readPress(uint8_t sensorPin) {
+int readPress(uint8_t sensorPin, uint8_t index) {
   //just a dummy at present
   int p;
   p = analogRead(sensorPin);
 
   // process any faults
   if (p <10) {
-    toggleFault(sensorPin);
-    sensepeakvals[sensorPin]=senseminvals[sensorPin];
-    p=senseminvals[sensorPin];
+    toggleFault(index);
+    sensepeakvals[index]=senseminvals[index];
+    p=senseminvals[index];
   } else {
-    sensefault[sensorPin]=0; // no fault 
+    sensefault[index]=0; // no fault 
   }
   return (p);
 }
 
-bool readCoolantLevel(uint8_t sensorPin) {
+bool readCoolantLevel(uint8_t sensorPin, uint8_t index) {
   // placeholder function
   // sensor is normally closed
   // use a pulldown resistor to enable fault monitoring
@@ -538,10 +549,38 @@ bool readCoolantLevel(uint8_t sensorPin) {
 
   // process any faults
   if (CoolantLevel <512) { // if we're pulled low then either the sensor is signalling low collant, or we have a continuity issue
-    toggleFault(sensorPin);
+    toggleFault(index);
     return (false);
   } 
-  sensefault[sensorPin]=0; // no fault
+  sensefault[index]=0; // no fault
   return (true);
+}
+
+void readADXL(void) {
+  // adafruit libraries for this are pretty fat so we're teetering close to stomping on our variables when using an atmega328
+  sensors_event_t event;
+  accel.getEvent(&event);
+  double ax, ay, az;
+
+  ax = event.acceleration.x;
+  ay = event.acceleration.y;
+  az = event.acceleration.z;
+
+  // we're only interested in one axis for vehicle roll
+  
+  //  double xAngle = atan( ax / (sqrt(square(ay) + square(az))));
+  double yAngle = atan( ay / (sqrt(square(ax) + square(az))));
+  //  double zAngle = atan( sqrt(square(ax) + square(ay)) / az);
+  
+  //  xAngle *= 180.00;   
+  yAngle *= 180.00;   
+  //  zAngle *= 180.00;
+  //  xAngle /= 3.141592; 
+  yAngle /= 3.141592; 
+  //  zAngle /= 3.141592;
+
+//  Serial.print("    yAngle: ");
+//  Serial.println(yAngle);
+
 }
 
