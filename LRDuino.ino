@@ -10,13 +10,15 @@
 // fixed bug in doWarnings() where we were directly referencing display 1 & 3 rather than passing in a reference to the display that we wanted to draw on
 // reverted scalerange change to int back to float - graph was drawing only at left
 // Fault signals now reset max recorded values to the minimum of the scalerange
+// Fixed bug with screen rotation - it's not a good idea values outside of the bounds of and array! "if (faultWARN(6)==1)"
+// Fixed bug analogue inputs need to correspond to their analogue pin, this is because the code implicitly expects them on those...
 
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_MAX31856.h>
 
 
 // Following pinout details are for Ardunio Nano - be sure to adjust for your hadrware
-#define OLED_RESET  19 // analogue 7
+#define OLED_RESET  16  //Analogue 2
 #define OLED_CS     12
 #define OLED_DC     11  //MISO DC
 #define OLED_CLK    10  //D0
@@ -147,7 +149,7 @@ void setup()   {
   display2.clearDisplay();   // clears the screen and buffer
   display3.clearDisplay();   // clears the screen and buffer
 
-  //configure pin2 as an input and enable the internal pull-up resistor, this is for a button to control the rotation of sensors around the screen
+  //configure pin8 as an input and enable the internal pull-up resistor, this is for a button to control the rotation of sensors around the screen
   pinMode(8, INPUT_PULLUP);
   
   max.begin(); //initialise the MAX31856 
@@ -158,15 +160,9 @@ void setup()   {
   atmos = readBoost(0);  // not actually used at this point so could be rmeoved
 
   //stop all the unused anlogue pins from floating
-  pinMode(A2, OUTPUT);
-  digitalWrite(A2, LOW);
-  
-  pinMode(A4, OUTPUT);
-  digitalWrite(A4, LOW);
-  
   pinMode(A6, OUTPUT);
   digitalWrite(A6, LOW);
-  
+
   pinMode(A7, OUTPUT);
   digitalWrite(A7, LOW);
 }
@@ -184,6 +180,7 @@ void loop() {
       rotation = 0;
     }
   }
+
 
   if (currentMillis - previousMillis > interval) { // only read the sensors and draw the screen if 250 millis have passed
     // save the last time we updated
@@ -206,7 +203,7 @@ void loop() {
     sensevals[4] = readERR2081(4); // read A4, currently the Engine oil temp sensor
     updatePEAK(4); // OIL TEMP
 
-    sensevals[5] = int(readCoolantLevel(6)); // read A6, to check if coolant level is low
+    sensevals[5] = int(readCoolantLevel(5)); // read A6, to check if coolant level is low
     //updatePEAK(5); // Coolant Level - no need to set a max as this is boolean
 
     // DRAW DISPLAYS
@@ -273,7 +270,7 @@ void drawDISPLAY1(void) { // DISPLAY 1 is our Main guage display
   doWarnings(sensor0, 100, 4, display1);
 
   // Coolant warning - only write this to display1!
-  if (faultWARN(6)==1) {
+  if (faultWARN(5)==1) {
     display1.setCursor(34, 43);
     display1.setTextColor(BLACK,WHITE);
     display1.println("Coolant Low");
