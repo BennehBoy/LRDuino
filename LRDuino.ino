@@ -1,5 +1,5 @@
 // LRDuino by Ben Anderson
-// Version 0.86
+// Version 0.87
 // Reworked to use Adafruit 31856 Library
 // Moved OLED_RESET from 13 to 14 to stop illumination of onboard LED
 // Changed scalerange from float to int
@@ -15,12 +15,11 @@
 // Decoupled sensor input pins from array index - read functions now need to also be passed the array index to store data
 // Moved some pins around to accomodate i2c on a4,a5
 // Added initial support for ADXL345 Accelerometer
+// Switched to Fabo ADXL345 library, this saves 1766 bytes of Progmem, and 223 bytes of Dyn mem!
 
-#include <Wire.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_MAX31856.h>
-#include <Adafruit_Sensor.h>
-#include <Adafruit_ADXL345_U.h>
+#include <FaBo3Axis_ADXL345.h>
 
 // Following pinout details are for Ardunio Nano - be sure to adjust for your hadrware
 #define OLED_RESET  13  //LED
@@ -42,7 +41,7 @@ Adafruit_SSD1306 display1(OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS);
 Adafruit_SSD1306 display2(OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS_2);
 Adafruit_SSD1306 display3(OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS_3);
 
-Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
+FaBo3Axis accel;
 
 #if (SSD1306_LCDHEIGHT != 64)
 #error("Height incorrect, please fix Adafruit_SSD1306.h!");
@@ -141,7 +140,7 @@ uint8_t rotation = 0; // incremented by 1 with each button press, resets to 0 af
 // will quickly become a bigger number than can be stored in an int.
 long previousMillis = 0;        // will store last time the displays were updated
 uint8_t interval = 250;         // interval at which to update displays(milliseconds)
-int atmos = 215;                //somewhere to store our startup atmospheric pressure - unused at present
+//int atmos = 215;                //somewhere to store our startup atmospheric pressure - unused at present
 
 void setup()   {
   //start serial connection
@@ -161,19 +160,14 @@ void setup()   {
   
   max.begin(); //initialise the MAX31856
 
-  accel.begin(); //initialise ADXL345
+  accel.configuration(); // initialise ADXL345
+  accel.powerOn();
 
   max.setThermocoupleType(MAX31856_TCTYPE_K); // and set it to a K-type thermocouple - adjust for you hardware!
   
   // read our boost sensor rawADC value since at this point it should be atmospheric pressure...
-  atmos = readBoost(0,0);  // not actually used at this point so could be rmeoved
+  //atmos = readBoost(0,0);  // not actually used at this point so could be rmeoved
 
-  //stop all the unused anlogue pins from floating
-  pinMode(A6, OUTPUT);
-  digitalWrite(A6, LOW);
-
-  pinMode(A7, OUTPUT);
-  digitalWrite(A7, LOW);
 }
 
 void loop() {
@@ -212,7 +206,7 @@ void loop() {
     sensevals[4] = readERR2081(7,4); // read A7, store at index 4 currently the Engine oil temp sensor
     updatePEAK(4); // OIL TEMP
 
-    sensevals[5] = int(readCoolantLevel(6,5)); // read A6, to check if coolant level is low
+    sensevals[5] = readCoolantLevel(6,5); // read A6, to check if coolant level is low
     //updatePEAK(5); // Coolant Level - no need to set a max as this is boolean
 
     readADXL();
@@ -284,7 +278,7 @@ void drawDISPLAY1(void) { // DISPLAY 1 is our Main guage display
   if (faultWARN(5)==1) {
     display1.setCursor(34, 43);
     display1.setTextColor(BLACK,WHITE);
-    display1.println("Coolant Low");
+    display1.println(F("Coolant Low"));
     // Play a buzzer sound with tone()
   }  
  
@@ -308,9 +302,9 @@ void drawDISPLAY2(void) { // DISPLAY 2 shows 2 sensors
   // DO sensor2 warnings
   doWarnings(sensor2, 100, 4, display2);
   
-  display3.setTextSize(2);
-  display3.setTextColor(WHITE);
-  display3.setTextWrap(false);
+//  display3.setTextSize(2);
+//  display3.setTextColor(WHITE);
+//  display3.setTextWrap(false);
   display2.setCursor(64, 42);
   display2.println(valIfnoErr(sensor5) + units(sensor5));
   display2.drawBitmap(24, 33, senseglyphs[sensor5], 32, 32, WHITE);
@@ -336,9 +330,9 @@ void drawDISPLAY3(void) { // DISPLAY 3 shows 2 sensors
   // DO sensor3 warnings
   doWarnings(sensor3, 100, 4, display3);
 
-  display3.setTextSize(2);
-  display3.setTextColor(WHITE);
-  display3.setTextWrap(false);
+//  display3.setTextSize(2);
+//  display3.setTextColor(WHITE);
+//  display3.setTextWrap(false);
   display3.setCursor(64, 42);
   display3.println(valIfnoErr(sensor4) + units(sensor4));
   display3.drawBitmap(24, 33, senseglyphs[sensor4], 32, 32, WHITE);
@@ -426,7 +420,7 @@ void updatePEAK(uint8_t sensorPin) {
 String units(uint8_t sensor) { // returns the units associated with the sensor, or a some fault text
   // if a fault is set return ERR
   if (sensefault[sensor] > 0) {
-    return(F("-/-"));
+    return(F("Er"));
   }  
   // if no fault then return the correct units (saves us some memory usage)
   if (senseunits[sensor] == false) {
@@ -512,9 +506,8 @@ int readBoost(uint8_t sensorPin, uint8_t index) {
 int readMAX(uint8_t index) {
   int t;
   t = max.readThermocoupleTemperature();
-  uint8_t fault = max.readFault();
   // process any faults
-  if (fault) {
+  if (max.readFault()) {
     toggleFault(index);
     sensepeakvals[index]=senseminvals[index];
     t=senseminvals[index];
@@ -557,14 +550,8 @@ bool readCoolantLevel(uint8_t sensorPin, uint8_t index) {
 }
 
 void readADXL(void) {
-  // adafruit libraries for this are pretty fat so we're teetering close to stomping on our variables when using an atmega328
-  sensors_event_t event;
-  accel.getEvent(&event);
-  double ax, ay, az;
-
-  ax = event.acceleration.x;
-  ay = event.acceleration.y;
-  az = event.acceleration.z;
+  int ax, ay, az;
+  accel.readXYZ(&ax,&ay,&az);
 
   // we're only interested in one axis for vehicle roll
   
@@ -579,8 +566,8 @@ void readADXL(void) {
   yAngle /= 3.141592; 
   //  zAngle /= 3.141592;
 
-//  Serial.print("    yAngle: ");
-//  Serial.println(yAngle);
+  //Serial.print("    yAngle: ");
+  //Serial.println(yAngle);
 
 }
 
