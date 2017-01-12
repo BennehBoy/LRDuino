@@ -1,3 +1,7 @@
+Version 0.89
+Overhauled the display code to look much prettier
+Reduced some memory usage by breaking out some of the display code into functions
+
 Version 0.88
 Version history broken out into seperate file
 Added Sensor data for the adxl345 to the array

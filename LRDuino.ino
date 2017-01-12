@@ -234,13 +234,7 @@ void drawDISPLAY1(void) { // DISPLAY 1 is our Main guage display
   uint8_t sensor0 = posrot(1);
   //uint8_t sensor0 = 6;
 
-  display1.setTextSize(2);
-  display1.setTextColor(WHITE);
-  display1.setTextWrap(false);
-
-  display1.setCursor(38, 7);
-  display1.println(valIfnoErr(sensor0) + units(sensor0)); // print current sensor value & units
-  display1.drawBitmap(0, 0, senseglyphs[sensor0], 32, 32, WHITE); // draw bitmap for current sensor
+  drawSensor(0, display1, sensor0);
 
   display1.drawLine(11, 52, 11, 54, WHITE); // draw our gauge and scale markings
   display1.drawLine(64, 52, 64, 54, WHITE);
@@ -293,26 +287,10 @@ void drawDISPLAY2(void) { // DISPLAY 2 shows 2 sensors
   uint8_t sensor2 = posrot(2);
   uint8_t sensor5 = posrot(5);
 
-  display2.setTextSize(2);
-  display2.setTextColor(WHITE);
-  display2.setTextWrap(false);
-  display2.setCursor(38, 7);
-  display2.println(valIfnoErr(sensor2) + units(sensor2));
-  display2.drawBitmap(0, 0, senseglyphs[sensor2], 32, 32, WHITE);
+  drawSensor(0, display2, sensor2);
 
-  // DO sensor2 warnings
-  doWarnings(sensor2, 100, 4, display2);
-  
-//  display3.setTextSize(2);
-//  display3.setTextColor(WHITE);
-//  display3.setTextWrap(false);
-  display2.setCursor(64, 42);
-  display2.println(valIfnoErr(sensor5) + units(sensor5));
-  display2.drawBitmap(24, 33, senseglyphs[sensor5], 32, 32, WHITE);
+  drawSensor(33, display2, sensor5);  
 
-  // DO sensor5 warnings
-  doWarnings(sensor5, 0, 36, display2);
-  
   display2.display();
   display2.clearDisplay();
 }
@@ -321,31 +299,39 @@ void drawDISPLAY3(void) { // DISPLAY 3 shows 2 sensors
   uint8_t sensor3 = posrot(3);
   uint8_t sensor4 = posrot(4);
 
-  display3.setTextSize(2);
-  display3.setTextColor(WHITE);
-  display3.setTextWrap(false);
-  display3.setCursor(38, 7);
-  display3.println(valIfnoErr(sensor3) + units(sensor3));
-  display3.drawBitmap(0, 0, senseglyphs[sensor3], 32, 32, WHITE);
+  drawSensor(0, display3, sensor3);
 
-  // DO sensor3 warnings
-  doWarnings(sensor3, 100, 4, display3);
+  drawSensor(33, display3, sensor4);  
 
-//  display3.setTextSize(2);
-//  display3.setTextColor(WHITE);
-//  display3.setTextWrap(false);
-  display3.setCursor(64, 42);
-  display3.println(valIfnoErr(sensor4) + units(sensor4));
-  display3.drawBitmap(24, 33, senseglyphs[sensor4], 32, 32, WHITE);
-
-  // DO sensor4 warnings
-  doWarnings(sensor4, 0, 36, display3);
-  
   display3.display();
   display3.clearDisplay();
 }
 
 // Helper Functions
+
+void drawSensor(uint8_t y, Adafruit_SSD1306 &refDisp, uint8_t sensor) {
+  uint8_t xoffset=0;
+  String temp;
+  refDisp.setTextSize(2);
+  refDisp.setTextColor(WHITE);
+  refDisp.setTextWrap(false);
+  refDisp.setCursor(46, y+9);
+  refDisp.println(valIfnoErr(sensor));
+  temp = valIfnoErr(sensor);
+  xoffset = (temp.length() *12)+1 ; // work out width of the characters so we can move the cursor to the correct position to display our units symbol
+
+  if (sensefault[sensor] > 0 || sensor == 5) { // normal size text if it's an error message or it's our low coolant warning sensor
+      refDisp.setTextSize(2);
+  }  else {
+      refDisp.setTextSize(1);
+  }
+  refDisp.setCursor(46+xoffset, y+9);
+  refDisp.println(units(sensor));
+  refDisp.drawBitmap(0, y, senseglyphs[sensor], 32, 32, WHITE);
+
+  // DO sensor warnings
+  doWarnings(sensor, 100, y+4, refDisp);
+}
 
 void doWarnings(uint8_t sensorZ, uint8_t x, uint8_t y, Adafruit_SSD1306 &refDisp) {
   // this function draws an icon and co-ords x,y if there is an error state set
@@ -361,7 +347,6 @@ void doWarnings(uint8_t sensorZ, uint8_t x, uint8_t y, Adafruit_SSD1306 &refDisp
   //do soemthing
   //  }  
 }
-
 
 
 bool highWARN(uint8_t sensorZ) {
@@ -436,7 +421,7 @@ String units(uint8_t sensor) { // returns the units associated with the sensor, 
       } 
       return(F("OK"));
     case 3:
-      return(F("deg"));
+      return(F("o"));
   }
 }
 
@@ -547,14 +532,13 @@ int readPress(uint8_t sensorPin, uint8_t index) {
 }
 
 bool readCoolantLevel(uint8_t sensorPin, uint8_t index) {
-  // placeholder function
   // sensor is normally closed
   // use a pulldown resistor to enable fault monitoring
   int CoolantLevel;
   CoolantLevel = analogRead(sensorPin);
 
   // process any faults
-  if (CoolantLevel <512) { // if we're pulled low then either the sensor is signalling low collant, or we have a continuity issue
+  if (CoolantLevel <512) { // if we're pulled low then either the sensor is signalling low coolant, or we have a continuity issue
     toggleFault(index);
     return (false);
   } 
