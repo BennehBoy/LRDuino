@@ -1,21 +1,5 @@
 // LRDuino by Ben Anderson
-// Version 0.87
-// Reworked to use Adafruit 31856 Library
-// Moved OLED_RESET from 13 to 14 to stop illumination of onboard LED
-// Changed scalerange from float to int
-// Added Fault code & moved warning animation into a function
-// Got NTC temp working correctly
-// made public on github
-// Added low coolant warning, &assoicated variables & functions - shows on display1 only
-// fixed bug in doWarnings() where we were directly referencing display 1 & 3 rather than passing in a reference to the display that we wanted to draw on
-// reverted scalerange change to int back to float - graph was drawing only at left
-// Fault signals now reset max recorded values to the minimum of the scalerange
-// Fixed bug with screen rotation - it's not a good idea values outside of the bounds of and array! "if (faultWARN(6)==1)"
-// Fixed bug analogue inputs need to correspond to their analogue pin, this is because the code implicitly expects them on those...
-// Decoupled sensor input pins from array index - read functions now need to also be passed the array index to store data
-// Moved some pins around to accomodate i2c on a4,a5
-// Added initial support for ADXL345 Accelerometer
-// Switched to Fabo ADXL345 library, this saves 1766 bytes of Progmem, and 223 bytes of Dyn mem!
+// Version 0.88
 
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_MAX31856.h>
@@ -113,26 +97,49 @@ const unsigned char PROGMEM triBMP [] = {
 };
 
 const unsigned char PROGMEM NoConn [] = {
-0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x00, 0x01, 0xFC, 0x00, 0x03, 0x8C, 0x00, 0x07, 0x06, 0x00,
-0x0E, 0x06, 0x00, 0x18, 0x0C, 0x00, 0x19, 0x1C, 0x00, 0x13, 0x38, 0x00, 0x0E, 0x70, 0x00, 0x0C,
-0xE0, 0x03, 0x9B, 0xC0, 0x07, 0x70, 0x00, 0x0C, 0x60, 0x00, 0x1C, 0xD0, 0x00, 0x39, 0x90, 0x00,
-0x70, 0x30, 0x00, 0x60, 0x70, 0x00, 0x60, 0xE0, 0x00, 0x61, 0xC0, 0x00, 0x33, 0x80, 0x00, 0x3F,
-0x00, 0x00, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00, 
+  0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x00, 0x01, 0xFC, 0x00, 0x03, 0x8C, 0x00, 0x07, 0x06, 0x00,
+  0x0E, 0x06, 0x00, 0x18, 0x0C, 0x00, 0x19, 0x1C, 0x00, 0x13, 0x38, 0x00, 0x0E, 0x70, 0x00, 0x0C,
+  0xE0, 0x03, 0x9B, 0xC0, 0x07, 0x70, 0x00, 0x0C, 0x60, 0x00, 0x1C, 0xD0, 0x00, 0x39, 0x90, 0x00,
+  0x70, 0x30, 0x00, 0x60, 0x70, 0x00, 0x60, 0xE0, 0x00, 0x61, 0xC0, 0x00, 0x33, 0x80, 0x00, 0x3F,
+  0x00, 0x00, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00, 
 };
+
+const unsigned char PROGMEM D2BMP [] = {
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x38, 0x00, 0x00, 0x03, 0xFC, 0x00, 0x00, 0x3F, 0x86, 0x00,
+  0x01, 0xF8, 0x03, 0x00, 0x0F, 0xC0, 0x03, 0x00, 0x3E, 0x00, 0x01, 0x80, 0x70, 0x00, 0x01, 0x80,
+  0x60, 0x00, 0x00, 0x80, 0x60, 0x00, 0x00, 0xC0, 0x20, 0x00, 0x00, 0x60, 0x20, 0x00, 0x00, 0x20,
+  0x20, 0x00, 0x00, 0x20, 0x20, 0x00, 0x00, 0x30, 0x20, 0x00, 0x00, 0x10, 0x20, 0x00, 0x00, 0x10,
+  0x20, 0x00, 0x00, 0x10, 0x20, 0x00, 0x00, 0x10, 0x20, 0x00, 0x00, 0xF8, 0x30, 0x00, 0x07, 0xF8,
+  0x30, 0x00, 0x78, 0x78, 0x10, 0x03, 0xC0, 0x3C, 0x18, 0x3C, 0x00, 0x3C, 0x09, 0xE0, 0x00, 0x3C,
+  0x0F, 0x00, 0x00, 0x3C, 0x0F, 0x00, 0x00, 0x00, 0x07, 0x80, 0x00, 0x00, 0x07, 0x80, 0x00, 0x00,
+  0x07, 0x80, 0x00, 0x00, 0x03, 0xC0, 0x00, 0x00, 0x03, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+
+const unsigned char PROGMEM coollev [] = {
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x38, 0x18, 0x18, 0x1C,
+  0x7E, 0x7E, 0x7E, 0x7E, 0xFF, 0xFF, 0xFF, 0xFF, 0xC3, 0xC3, 0xC3, 0xC3, 0x81, 0x81, 0x81, 0x81,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x07, 0xE0, 0x0F, 0xFC, 0x1F, 0xF8, 0x3F,
+  0xFF, 0x7F, 0xFE, 0xFF, 0x0F, 0xF8, 0x1F, 0xF0, 0x03, 0xE0, 0x07, 0xC0, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x38, 0x18, 0x18, 0x1C, 0x7E, 0x7E, 0x7E, 0x7E, 0xFF, 0xFF, 0xFF, 0xFF,
+  0xC3, 0xC3, 0xC3, 0xC3, 0x81, 0x81, 0x81, 0x81, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+
 
 // This is all the parameters and variables for our sensors - collumn 6 is a dummy for a boolean input (Engine Coolant Level)
 
-//                                    Turbo       Tbox temp     EGT       Oil Press   Oil Temp  Cool Lev
-bool warnhistatus[] =                 { false,    false,        false,    false,      false,    false   }; // flag for alteranting warning animations
-uint8_t sensefault[]=                 { 0,        0,            0,        0,          0,        0       }; // flag set when sensor in error state.
-const unsigned char* senseglyphs[] =  { trbBMP,   tboxBMP,      egtBMP,   eopBMP,     eotBMP,   triBMP  }; // pointers to our bitmaps
-int sensevals[] =                     { 0,        0,            -20,      50,         101,      0       }; // bogus start values for debug
-const bool senseunits[] =             { true,     false,        false,    true,       false,    0       }; // 0 for C 1 for psi units to print for each sensor
-const int sensemaxvals[] =            { 32,       150,          900,      72,         150,      1       }; // the maximum scale to use in our graph for each sensor
-const int8_t senseminvals[] =         { 0,        -40,          -40,      0,          -40,      0       }; // the minimum scale to use in our graph for each sensor
-int sensepeakvals[] =                 { 0,        -40,          -40,      0,          -40,      1       }; // somewhere for us to store peak values
-const int sensewarnhivals[] =         { 30,       140,          750,      60,         100,      999     }; // values from RAVE that we want to warn of HIGH vals
-//int sensewarnlowvals[] =            { -999,     -999,         -999,     9,          -999,     0       }; // values from RAVE that we want to warn of LOW vals (set to outside range for no warning)
+//                                    Turbo       Tbox temp     EGT       Oil Press   Oil Temp  Cool Lev  Roll
+bool warnhistatus[] =                 { false,    false,        false,    false,      false,    false,    false   }; // flag for alteranting warning animations
+uint8_t sensefault[]=                 { 0,        0,            0,        0,          0,        0,        0       }; // flag set when sensor in error state.
+const unsigned char* senseglyphs[] =  { trbBMP,   tboxBMP,      egtBMP,   eopBMP,     eotBMP,   coollev,   D2BMP  }; // pointers to our bitmaps
+int sensevals[] =                     { 0,        0,            -20,      50,         101,      0,        0       }; // bogus start values for debug
+const uint8_t senseunits[] =          { 1,        0,            0,        1,          0,        2,        3       }; // 0 for C 1 for psi 2 for "OK" 3 for "deg"
+const int sensemaxvals[] =            { 32,       150,          900,      72,         150,      1,        45      }; // the maximum scale to use in our graph for each sensor
+const int8_t senseminvals[] =         { 0,        -40,          -40,      0,          -40,      0,        -45     }; // the minimum scale to use in our graph for each sensor
+int sensepeakvals[] =                 { 0,        -40,          -40,      0,          -40,      1,        0       }; // somewhere for us to store peak values
+const int sensewarnhivals[] =         { 30,       140,          750,      60,         100,      999,      30      }; // values from RAVE that we want to warn of HIGH vals
+//int sensewarnlowvals[] =            { -999,     -999,         -999,     9,          -999,     0,        0       }; // values from RAVE that we want to warn of LOW vals (set to outside range for no warning)
 
 uint8_t rotation = 0; // incremented by 1 with each button press, resets to 0 after 5
 
@@ -179,7 +186,7 @@ void loop() {
   if (butVal == LOW) {
     rotation = rotation + 1; // rotate the screens if the button was pressed
     previousMillis = previousMillis - (interval + 1); // force an update of the screens.
-    if (rotation == 5) {
+    if (rotation == 7) {
       rotation = 0;
     }
   }
@@ -209,8 +216,9 @@ void loop() {
     sensevals[5] = readCoolantLevel(6,5); // read A6, to check if coolant level is low
     //updatePEAK(5); // Coolant Level - no need to set a max as this is boolean
 
-    readADXL();
-
+    sensevals[6] = readADXL(6); // Inclinometer - Y (roll) angle
+    updatePEAK(6);
+  
     // DRAW DISPLAYS
     drawDISPLAY1();
     drawDISPLAY2();
@@ -224,6 +232,7 @@ void drawDISPLAY1(void) { // DISPLAY 1 is our Main guage display
   float scalerange = 0;
   int scaleposmin = 0;
   uint8_t sensor0 = posrot(1);
+  //uint8_t sensor0 = 6;
 
   display1.setTextSize(2);
   display1.setTextColor(WHITE);
@@ -273,14 +282,6 @@ void drawDISPLAY1(void) { // DISPLAY 1 is our Main guage display
   display1.println(String(sensemaxvals[sensor0])); // draw the maximum value
 
   doWarnings(sensor0, 100, 4, display1);
-
-  // Coolant warning - only write this to display1!
-  if (faultWARN(5)==1) {
-    display1.setCursor(34, 43);
-    display1.setTextColor(BLACK,WHITE);
-    display1.println(F("Coolant Low"));
-    // Play a buzzer sound with tone()
-  }  
  
   display1.display();
   display1.clearDisplay();
@@ -419,32 +420,44 @@ void updatePEAK(uint8_t sensorPin) {
 
 String units(uint8_t sensor) { // returns the units associated with the sensor, or a some fault text
   // if a fault is set return ERR
-  if (sensefault[sensor] > 0) {
+  if (sensefault[sensor] > 0 && sensor !=5) {
     return(F("Er"));
   }  
   // if no fault then return the correct units (saves us some memory usage)
-  if (senseunits[sensor] == false) {
-    return(F("C"));
-  } else {
-    return(F("psi"));
+
+  switch(senseunits[sensor]) {
+    case 0:
+      return(F("C"));
+    case 1: 
+      return(F("psi"));
+    case 2:
+      if (sensefault[sensor] > 0) {
+        return(F("LOW"));
+      } 
+      return(F("OK"));
+    case 3:
+      return(F("deg"));
   }
 }
 
-String valIfnoErr(uint8_t sensor) { // returns the units associated with the sensir
-  //prevents values being displayed is we are in fault state
+String valIfnoErr(uint8_t sensor) { //prevents values being displayed is we are in fault state OR this is a bollean sensor (coolant level)
   String text = String(sensevals[sensor]);
   // if a fault is set return an empty string
-  if (sensefault[sensor] > 0) {
+
+  if (sensor == 5) {
+    return(F(""));
+  }  
+  if (sensefault[sensor] > 0 || sensor == 5) {
     return(F(""));
   }  
     return(text);
 }
 
 uint8_t posrot(uint8_t location) { // this is used to shift our array of data around the screens
-  uint8_t pos[] = {0, 1, 2, 3, 4};
+  uint8_t pos[] = {0, 1, 2, 3, 4, 5, 6};
   location = location - 1 + pos[rotation];
-  if (location > 4) {
-    location = location % 5;
+  if (location > 6) {
+    location = location % 7;
   }
   return(location);
 }
@@ -549,14 +562,14 @@ bool readCoolantLevel(uint8_t sensorPin, uint8_t index) {
   return (true);
 }
 
-void readADXL(void) {
+int readADXL(uint8_t index) {
   int ax, ay, az;
   accel.readXYZ(&ax,&ay,&az);
 
   // we're only interested in one axis for vehicle roll
   
   //  double xAngle = atan( ax / (sqrt(square(ay) + square(az))));
-  double yAngle = atan( ay / (sqrt(square(ax) + square(az))));
+  double yAngle = atan( ay / (sqrt(sq(ax) + sq(az))));
   //  double zAngle = atan( sqrt(square(ax) + square(ay)) / az);
   
   //  xAngle *= 180.00;   
@@ -568,6 +581,6 @@ void readADXL(void) {
 
   //Serial.print("    yAngle: ");
   //Serial.println(yAngle);
-
+  return(int(yAngle));
 }
 
