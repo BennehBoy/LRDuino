@@ -1,5 +1,5 @@
 // LRDuino by Ben Anderson
-// Version 0.88
+// Version 0.89
 
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_MAX31856.h>
