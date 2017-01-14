@@ -1,3 +1,8 @@
+Version 0.90
+Moved gfx to seperate .h file
+Added animation to the roll icon
+Added low warning values and code
+
 Version 0.89
 Overhauled the display code to look much prettier
 Reduced some memory usage by breaking out some of the display code into functions
