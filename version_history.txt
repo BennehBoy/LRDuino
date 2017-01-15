@@ -1,3 +1,10 @@
+Version 0.91
+Changed font used for values & errors to FreeSansBoldOblique12pt7b - nice TTF font, code amended to reflect baseline change in this font from standard.
+Tidied some repetetive fault checking code nto a helper function.
+Changed some of the comments to hopefully make the code easier to follow.
+Fixed a bug where warning faulted sensors were displaying warning values - not really necessary to do this.
+Fixed a bug where display1 was drawing the sensor twice - meant that warnings/faults would not animate.
+
 Version 0.90
 Moved gfx to seperate .h file
 Added animation to the roll icon
