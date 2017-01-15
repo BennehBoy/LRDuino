@@ -36,7 +36,7 @@ FaBo3Axis accel;
 // This is all the parameters and variables for our sensors - collumn 6 is a dummy for a boolean input (Engine Coolant Level)
 //                                    Turbo       Tbox temp     EGT       Oil Press   Oil Temp  Cool Lev  Roll
 bool warnhistatus[] =                 { false,    false,        false,    false,      false,    false,    false   }; // flag for alteranting warning animations
-uint8_t sensefault[]=                 { 0,        0,            0,        0,          0,        0,        0       }; // flag set when sensor in error state.
+uint8_t sensefault[] =                { 0,        0,            0,        0,          0,        0,        0       }; // flag set when sensor in error state.
 const unsigned char* senseglyphs[] =  { trbBMP,   tboxBMP,      egtBMP,   eopBMP,     eotBMP,   coollev,   D2BMP  }; // pointers to our bitmaps
 int sensevals[] =                     { 0,        0,            -20,      50,         101,      0,        0       }; // bogus start values for debug
 const uint8_t senseunits[] =          { 1,        0,            0,        1,          0,        2,        3       }; // 0 for C 1 for psi 2 for "OK" 3 for "deg"
@@ -57,9 +57,8 @@ uint8_t interval = 250;         // interval at which to update displays(millisec
 void setup()   {
   //start serial connection
   //Serial.begin(9600);  //uncomment to send serial debug info
-  
-  // by default, we'll generate the high voltage from the 3.3v line internally! (neat!)  
-  display1.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, true);
+
+  display1.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, true); //construct our displays
   display2.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, false);
   display3.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, false);
 
@@ -69,10 +68,10 @@ void setup()   {
 
   //configure pin8 as an input and enable the internal pull-up resistor, this is for a button to control the rotation of sensors around the screen
   pinMode(8, INPUT_PULLUP);
-  
+
   max.begin(); //initialise the MAX31856
   max.setThermocoupleType(MAX31856_TCTYPE_K); // and set it to a K-type thermocouple - adjust for you hardware!
-  
+
   accel.configuration(); // initialise ADXL345
   accel.powerOn();
 
@@ -101,27 +100,27 @@ void loop() {
 
     // SENSOR READING
 
-    sensevals[0] = readBoost(0,0); // read boost off A0 and store at index 0
+    sensevals[0] = readBoost(0, 0); // read boost off A0 and store at index 0
     updatePEAK(0); // TURBO
 
-    sensevals[1] = readERR2081(1,1); // read A1, currently the Gearbox oil temp sensor
+    sensevals[1] = readERR2081(1, 1); // read A1, currently the Gearbox oil temp sensor
     updatePEAK(1); // TBOX OIL TEMP
 
     sensevals[2] = readMAX(2); //read EGT from the Max31856
     updatePEAK(2); // EGT
 
-    sensevals[3] = readPress(2,3); // placeholder at the moment but should be very similar to the boost reading if a cheap pressure sensor is used (ie one which returns a linear voltage 0-5v based on presure)
+    sensevals[3] = readPress(2, 3); // placeholder at the moment but should be very similar to the boost reading if a cheap pressure sensor is used (ie one which returns a linear voltage 0-5v based on presure)
     updatePEAK(3); // OIL PRESSURE
 
-    sensevals[4] = readERR2081(7,4); // read A7, store at index 4 currently the Engine oil temp sensor
+    sensevals[4] = readERR2081(7, 4); // read A7, store at index 4 currently the Engine oil temp sensor
     updatePEAK(4); // OIL TEMP
 
-    sensevals[5] = readCoolantLevel(6,5); // read A6, to check if coolant level is low
+    sensevals[5] = readCoolantLevel(6, 5); // read A6, to check if coolant level is low
     //updatePEAK(5); // Coolant Level - no need to set a max as this is boolean
 
     sensevals[6] = readADXL(6); // Inclinometer - Y (roll) angle
     updatePEAK(6);
-  
+
     // DRAW DISPLAYS
     drawDISPLAY1();
     drawDISPLAY2();
@@ -188,7 +187,7 @@ void drawDISPLAY2(void) { // DISPLAY 2 shows 2 sensors
 
   drawSensor(0, display2, sensor2);
 
-  drawSensor(33, display2, sensor5);  
+  drawSensor(33, display2, sensor5);
 
   display2.display();
   display2.clearDisplay();
@@ -200,7 +199,7 @@ void drawDISPLAY3(void) { // DISPLAY 3 shows 2 sensors
 
   drawSensor(0, display3, sensor3);
 
-  drawSensor(33, display3, sensor4);  
+  drawSensor(33, display3, sensor4);
 
   display3.display();
   display3.clearDisplay();
@@ -209,84 +208,84 @@ void drawDISPLAY3(void) { // DISPLAY 3 shows 2 sensors
 // Helper Functions
 
 void drawSensor(uint8_t y, Adafruit_SSD1306 &refDisp, uint8_t sensor) {
-  uint8_t xoffset=0;
+  uint8_t xoffset = 0;
   String temp;
-  int8_t rolltemp=0;
+  int8_t rolltemp = 0;
   refDisp.setTextSize(1);
   refDisp.setTextColor(WHITE);
   refDisp.setTextWrap(false);
   refDisp.setFont(&FreeSansBoldOblique12pt7b); //switch to a nice ttf font 12x7
-  refDisp.setCursor(46, y+9+15);
+  refDisp.setCursor(46, y + 9 + 15);
   refDisp.println(valIfnoErr(sensor));
   temp = valIfnoErr(sensor);
-  xoffset = (temp.length() *13)+3 ; // work out width of the characters so we can move the cursor to the correct position to display our units symbol
+  xoffset = (temp.length() * 13) + 3 ; // work out width of the characters so we can move the cursor to the correct position to display our units symbol
 
   if (sensefault[sensor] > 0 || sensor == 5) { // normal size text if it's an error message or it's our low coolant warning sensor
-      refDisp.setTextSize(1);
-      refDisp.setCursor(46+xoffset, y+9+15);
+    refDisp.setTextSize(1);
+    refDisp.setCursor(46 + xoffset, y + 9 + 15);
   }  else {
-      refDisp.setFont();
-      refDisp.setTextSize(1);
-      refDisp.setCursor(46+xoffset, y+9);
+    refDisp.setFont();
+    refDisp.setTextSize(1);
+    refDisp.setCursor(46 + xoffset, y + 9);
   }
 
   refDisp.println(units(sensor));
-  if (sensor ==6) { // INCLINOMETER ONLY (ANIMATED)
-    rolltemp=sensevals[sensor];
-      if (rolltemp >-5 && rolltemp <5) {  // centred
-        refDisp.drawBitmap(0, y, D2a0, 32, 32, WHITE);
-      } else if (rolltemp >-10 && rolltemp <=-5) { //-5 deg
-        refDisp.drawBitmap(0, y, D2a5L, 32, 32, WHITE);
-      } else if (rolltemp >-15 && rolltemp <=-10) { //-10 deg
-        refDisp.drawBitmap(0, y, D2a10L, 32, 32, WHITE);
-      } else if (rolltemp >-20 && rolltemp <=-15) { //-15 deg
-        refDisp.drawBitmap(0, y, D2a15L, 32, 32, WHITE);
-      } else if (rolltemp >-25 && rolltemp <=-20) { //-20 deg
-        refDisp.drawBitmap(0, y, D2a20L, 32, 32, WHITE);
-      } else if (rolltemp >-30 && rolltemp <=-25) { //-25 deg
-        refDisp.drawBitmap(0, y, D2a25L, 32, 32, WHITE);
-      } else if (rolltemp >-35 && rolltemp <=-30) { //-30 deg
-        refDisp.drawBitmap(0, y, D2a30L, 32, 32, WHITE);
-      } else if (rolltemp >-40 && rolltemp <=-35) { //-35 deg
-        refDisp.drawBitmap(0, y, D2a35L, 32, 32, WHITE);
-      } else if (rolltemp >-45 && rolltemp <=-40) { //-40 deg
-        refDisp.drawBitmap(0, y, D2a40L, 32, 32, WHITE);
-      } else if (rolltemp >-50 && rolltemp <=-45) { //-45 deg
-        refDisp.drawBitmap(0, y, D2a45L, 32, 32, WHITE);
+  if (sensor == 6) { // INCLINOMETER ONLY (ANIMATED)
+    rolltemp = sensevals[sensor];
+    if (rolltemp > -5 && rolltemp < 5) { // centred
+      refDisp.drawBitmap(0, y, D2a0, 32, 32, WHITE);
+    } else if (rolltemp > -10 && rolltemp <= -5) { //-5 deg
+      refDisp.drawBitmap(0, y, D2a5L, 32, 32, WHITE);
+    } else if (rolltemp > -15 && rolltemp <= -10) { //-10 deg
+      refDisp.drawBitmap(0, y, D2a10L, 32, 32, WHITE);
+    } else if (rolltemp > -20 && rolltemp <= -15) { //-15 deg
+      refDisp.drawBitmap(0, y, D2a15L, 32, 32, WHITE);
+    } else if (rolltemp > -25 && rolltemp <= -20) { //-20 deg
+      refDisp.drawBitmap(0, y, D2a20L, 32, 32, WHITE);
+    } else if (rolltemp > -30 && rolltemp <= -25) { //-25 deg
+      refDisp.drawBitmap(0, y, D2a25L, 32, 32, WHITE);
+    } else if (rolltemp > -35 && rolltemp <= -30) { //-30 deg
+      refDisp.drawBitmap(0, y, D2a30L, 32, 32, WHITE);
+    } else if (rolltemp > -40 && rolltemp <= -35) { //-35 deg
+      refDisp.drawBitmap(0, y, D2a35L, 32, 32, WHITE);
+    } else if (rolltemp > -45 && rolltemp <= -40) { //-40 deg
+      refDisp.drawBitmap(0, y, D2a40L, 32, 32, WHITE);
+    } else if (rolltemp > -50 && rolltemp <= -45) { //-45 deg
+      refDisp.drawBitmap(0, y, D2a45L, 32, 32, WHITE);
 
-      } else if (rolltemp >=5 && rolltemp <10) { //5 deg
-        refDisp.drawBitmap(0, y, D2a5R, 32, 32, WHITE);
-      } else if (rolltemp >=10 && rolltemp <15) { //10 deg
-        refDisp.drawBitmap(0, y, D2a10R, 32, 32, WHITE);
-      } else if (rolltemp >=15 && rolltemp <20) { //20 deg
-        refDisp.drawBitmap(0, y, D2a15R, 32, 32, WHITE);
-      } else if (rolltemp >=20 && rolltemp <25) { //20 deg
-        refDisp.drawBitmap(0, y, D2a20R, 32, 32, WHITE);
-      } else if (rolltemp >=25 && rolltemp <30) { //25 deg
-        refDisp.drawBitmap(0, y, D2a25R, 32, 32, WHITE);
-      } else if (rolltemp >=30 && rolltemp <35) { //30 deg
-        refDisp.drawBitmap(0, y, D2a30R, 32, 32, WHITE);
-      } else if (rolltemp >=35 && rolltemp <40) { //35 deg
-        refDisp.drawBitmap(0, y, D2a35R, 32, 32, WHITE);
-      } else if (rolltemp >=40 && rolltemp <45) { //40 deg
-        refDisp.drawBitmap(0, y, D2a40R, 32, 32, WHITE);
-      } else if (rolltemp >=45 && rolltemp <50) { //45 deg
-        refDisp.drawBitmap(0, y, D2a45R, 32, 32, WHITE);       
-   
-      // WARNING CASE   
-      } else if (rolltemp <-45 || rolltemp >45) { // WARNING!
-        refDisp.drawBitmap(0, y, D2aWARN, 32, 32, WHITE); 
-      }
-    } else {
-      //ALL OTHER SENSORS
-      refDisp.drawBitmap(0, y, senseglyphs[sensor], 32, 32, WHITE);
+    } else if (rolltemp >= 5 && rolltemp < 10) { //5 deg
+      refDisp.drawBitmap(0, y, D2a5R, 32, 32, WHITE);
+    } else if (rolltemp >= 10 && rolltemp < 15) { //10 deg
+      refDisp.drawBitmap(0, y, D2a10R, 32, 32, WHITE);
+    } else if (rolltemp >= 15 && rolltemp < 20) { //20 deg
+      refDisp.drawBitmap(0, y, D2a15R, 32, 32, WHITE);
+    } else if (rolltemp >= 20 && rolltemp < 25) { //20 deg
+      refDisp.drawBitmap(0, y, D2a20R, 32, 32, WHITE);
+    } else if (rolltemp >= 25 && rolltemp < 30) { //25 deg
+      refDisp.drawBitmap(0, y, D2a25R, 32, 32, WHITE);
+    } else if (rolltemp >= 30 && rolltemp < 35) { //30 deg
+      refDisp.drawBitmap(0, y, D2a30R, 32, 32, WHITE);
+    } else if (rolltemp >= 35 && rolltemp < 40) { //35 deg
+      refDisp.drawBitmap(0, y, D2a35R, 32, 32, WHITE);
+    } else if (rolltemp >= 40 && rolltemp < 45) { //40 deg
+      refDisp.drawBitmap(0, y, D2a40R, 32, 32, WHITE);
+    } else if (rolltemp >= 45 && rolltemp < 50) { //45 deg
+      refDisp.drawBitmap(0, y, D2a45R, 32, 32, WHITE);
+
+      // WARNING CASE
+    } else if (rolltemp < -45 || rolltemp > 45) { // WARNING!
+      refDisp.drawBitmap(0, y, D2aWARN, 32, 32, WHITE);
     }
+  } else {
+    //ALL OTHER SENSORS
+    refDisp.drawBitmap(0, y, senseglyphs[sensor], 32, 32, WHITE);
+  }
   // DO sensor warnings
   if (hiloWARN(sensor)) {
-    refDisp.drawBitmap(100, y+4, triBMP, 24, 24, WHITE); //outut the warning triangle
+    refDisp.drawBitmap(100, y + 4, triBMP, 24, 24, WHITE); //outut the warning triangle
   }
-  if (faultWARN(sensor)==1) {
-    refDisp.drawBitmap(100, y+4, NoConn, 24, 24, WHITE); //output the disconnected sensor icon
+  if (faultWARN(sensor) == 1) {
+    refDisp.drawBitmap(100, y + 4, NoConn, 24, 24, WHITE); //output the disconnected sensor icon
   }
   refDisp.setFont(); //reset to basic font
 }
@@ -296,7 +295,7 @@ bool hiloWARN(uint8_t sensorZ) {
   // this function toggles a an error flag if the current sensor is above it's high warning parameter - since the display is redrawn every 250ms it appears to flash
 
   if (sensefault[sensorZ] > 0) { // we don't want to display a high or low warning if there's a sensor fault (ie wiring issue etc).
-    return(false);
+    return (false);
   }
   if (sensevals[sensorZ] > sensewarnhivals[sensorZ] || sensevals[sensorZ] < sensewarnlowvals[sensorZ]) {
     if (warnhistatus[sensorZ] == true) {
@@ -318,16 +317,16 @@ uint8_t faultWARN(uint8_t sensorZ) {
     } else {
       sensefault[sensorZ] = 1;
     }
-  } 
+  }
   return (sensefault[sensorZ]);
 }
 
 void toggleFault(uint8_t sensorPin) {
   // toggles the fault strate of a sensor (to make our warning symbols flash)
-  if (sensefault[sensorPin]==2) {
-    sensefault[sensorPin]=2; // 2 is animation off
+  if (sensefault[sensorPin] == 2) {
+    sensefault[sensorPin] = 2; // 2 is animation off
   } else {
-    sensefault[sensorPin]=1; // 1 is animation on
+    sensefault[sensorPin] = 1; // 1 is animation on
   }
 }
 
@@ -344,23 +343,23 @@ void updatePEAK(uint8_t sensorPin) {
 
 String units(uint8_t sensor) { // returns the units associated with the sensor, or some fault text
   // if a fault is set return ERR
-  if (sensefault[sensor] > 0 && sensor !=5) {
-    return(F("Er"));
-  }  
+  if (sensefault[sensor] > 0 && sensor != 5) {
+    return (F("Er"));
+  }
   // if no fault then return the correct units (saves us some memory usage)
 
-  switch(senseunits[sensor]) {
+  switch (senseunits[sensor]) {
     case 0:
-      return(F("C"));
-    case 1: 
-      return(F("psi"));
+      return (F("C"));
+    case 1:
+      return (F("psi"));
     case 2:
       if (sensefault[sensor] > 0) {
-        return(F("Low"));
-      } 
-      return(F("OK"));
+        return (F("Low"));
+      }
+      return (F("OK"));
     case 3:
-      return(F("o"));
+      return (F("o"));
   }
 }
 
@@ -369,12 +368,12 @@ String valIfnoErr(uint8_t sensor) { //prevents values being displayed if we are 
   // if a fault is set return an empty string
 
   if (sensor == 5) {
-    return(F(""));
-  }  
+    return (F(""));
+  }
   if (sensefault[sensor] > 0 || sensor == 5) {
-    return(F(""));
-  }  
-    return(text);
+    return (F(""));
+  }
+  return (text);
 }
 
 uint8_t posrot(uint8_t location) { // this is used to shift our array of data around the screens
@@ -383,18 +382,18 @@ uint8_t posrot(uint8_t location) { // this is used to shift our array of data ar
   if (location > 6) {
     location = location % 7;
   }
-  return(location);
+  return (location);
 }
 
 int doFaults(int constraint, int checkval, int retval, uint8_t index) { //
-  if (checkval <constraint) {
+  if (checkval < constraint) {
     toggleFault(index); //fault!
-    sensepeakvals[index]=senseminvals[index]; //set the peak value to minimum (tidies the display)
-    retval=senseminvals[index]; //return minimum value
+    sensepeakvals[index] = senseminvals[index]; //set the peak value to minimum (tidies the display)
+    retval = senseminvals[index]; //return minimum value
   } else {
-    sensefault[index]=0; // no fault 
+    sensefault[index] = 0; // no fault
   }
-  return(retval);
+  return (retval);
 }
 
 // Sensor reading code.
@@ -422,7 +421,7 @@ int readERR2081(uint8_t sensorPin, uint8_t index) {
 
   // FAULT checking
   // Sensors should be connected with a 1K pulldown resistor - if there's is a connection fault a low raw read will indicate this.
-  return(doFaults(10,raw,int(steinhart),index));
+  return (doFaults(10, raw, int(steinhart), index));
 }
 
 
@@ -434,7 +433,7 @@ int readBoost(uint8_t sensorPin, uint8_t index) {
   kpaval = rawval * 0.4878; // convert to kpa
   boost = kpaval * 0.145038 - 14.5038; // Convert to psi and subtract atmospheric (sensor is absolute pressure)
   // process any faults
-  return(doFaults(10,rawval,int(boost),index));
+  return (doFaults(10, rawval, int(boost), index));
 }
 
 int readMAX(uint8_t index) {
@@ -442,7 +441,7 @@ int readMAX(uint8_t index) {
   int t;
   t = max.readThermocoupleTemperature();
   // process any faults
-  return(doFaults(max.readFault(),0,t,index));
+  return (doFaults(max.readFault(), 0, t, index));
 }
 
 int readPress(uint8_t sensorPin, uint8_t index) {
@@ -451,7 +450,7 @@ int readPress(uint8_t sensorPin, uint8_t index) {
   p = analogRead(sensorPin);
 
   // process any faults
-  return(doFaults(10,p,p,index));
+  return (doFaults(10, p, p, index));
 }
 
 bool readCoolantLevel(uint8_t sensorPin, uint8_t index) {
@@ -461,26 +460,26 @@ bool readCoolantLevel(uint8_t sensorPin, uint8_t index) {
   CoolantLevel = analogRead(sensorPin);
 
   // process any faults
-  return((bool)doFaults(512,CoolantLevel,CoolantLevel,index));  
+  return ((bool)doFaults(512, CoolantLevel, CoolantLevel, index));
 }
 
 int readADXL(uint8_t index) {
   int ax, ay, az;
   if (!accel.searchDevice()) {
-    return(doFaults(1,0,0,index)); // set fault state if the ADXL345 is not connected
+    return (doFaults(1, 0, 0, index)); // set fault state if the ADXL345 is not connected
   }
-  accel.readXYZ(&ax,&ay,&az);
+  accel.readXYZ(&ax, &ay, &az);
   // we're only interested in one axis for vehicle roll
   //  double xAngle = atan( ax / (sqrt(square(ay) + square(az))));
   double yAngle = atan( ay / (sqrt(sq(ax) + sq(az))));
   //  double zAngle = atan( sqrt(square(ax) + square(ay)) / az);
-  //  xAngle *= 180.00;   
-  yAngle *= 180.00;   
+  //  xAngle *= 180.00;
+  yAngle *= 180.00;
   //  zAngle *= 180.00;
-  //  xAngle /= 3.141592; 
-  yAngle /= 3.141592; 
+  //  xAngle /= 3.141592;
+  yAngle /= 3.141592;
   //  zAngle /= 3.141592;
-  return(int(yAngle));
+  return (int(yAngle));
 }
 
 
