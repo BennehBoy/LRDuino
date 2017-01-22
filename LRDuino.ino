@@ -1,5 +1,5 @@
 // LRDuino by Ben Anderson
-// Version 0.91
+// Version 0.92
 
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_MAX31856.h>
@@ -35,6 +35,7 @@ FaBo3Axis accel;
 
 // This is all the parameters and variables for our sensors - collumn 6 is a dummy for a boolean input (Engine Coolant Level)
 //                                    Turbo       Tbox temp     EGT       Oil Press   Oil Temp  Cool Lev  Roll
+const bool senseactive[] =            { true,     true,         true,     true,       true,     true,     true    }; // sensor is enabled or not
 bool warnhistatus[] =                 { false,    false,        false,    false,      false,    false,    false   }; // flag for alteranting warning animations
 uint8_t sensefault[] =                { 0,        0,            0,        0,          0,        0,        0       }; // flag set when sensor in error state.
 const unsigned char* senseglyphs[] =  { trbBMP,   tboxBMP,      egtBMP,   eopBMP,     eotBMP,   coollev,   D2BMP  }; // pointers to our bitmaps
@@ -46,6 +47,8 @@ int sensepeakvals[] =                 { 0,        -40,          -40,      0,    
 const int sensewarnhivals[] =         { 29,       140,          750,      60,         100,      999,      30      }; // High value that we want to be warned if exceeded
 const int sensewarnlowvals[] =        { -999,     -999,         -999,     20,         -999,     -999,     -30     }; // Low value that we want to be warned if exceeded (-999 means we don't care)
 
+uint8_t sensecount = 0;
+const uint8_t totalsensors = 7; //this is the actual number of definitons above
 uint8_t rotation = 0; // incremented by 1 with each button press - it's used to tell the drawdisplay functions which sensor data they should output.
 
 // the follow variable is a long because the time, measured in miliseconds,
@@ -78,6 +81,14 @@ void setup()   {
   // read our boost sensor rawADC value since at this point it should be atmospheric pressure...
   //atmos = readBoost(0,0);  // not actually used at this point so could be rmeoved
 
+  // count the number of active sensors
+  // first we need to dimension the array
+  for (uint8_t thisSensor = 0; thisSensor < totalsensors; thisSensor++) {
+    if (senseactive[thisSensor]==true) {
+      sensecount++;
+
+    }
+  }
 }
 
 void loop() {
@@ -89,7 +100,7 @@ void loop() {
   if (butVal == LOW) {
     rotation = rotation + 1; // rotate the screens if the button was pressed
     previousMillis = previousMillis - (interval + 1); // force an update of the screens.
-    if (rotation == 7) { // this should be total number of sensors in the main sensor array
+    if (rotation == sensecount) { // this should be total number of sensors in the main sensor array
       rotation = 0;
     }
   }
@@ -100,26 +111,40 @@ void loop() {
 
     // SENSOR READING
 
-    sensevals[0] = readBoost(0, 0); // read boost off A0 and store at index 0
-    updatePEAK(0); // TURBO
+    if (senseactive[0]) {
+      sensevals[0] = readBoost(0, 0); // read boost off A0 and store at index 0
+      updatePEAK(0); // TURBO
+    }
 
-    sensevals[1] = readERR2081(1, 1); // read A1, currently the Gearbox oil temp sensor
-    updatePEAK(1); // TBOX OIL TEMP
+    if (senseactive[1]) {
+      sensevals[1] = readERR2081(1, 1); // read A1, currently the Gearbox oil temp sensor
+      updatePEAK(1); // TBOX OIL TEMP
+    }
+    
+    if (senseactive[2]) {
+      sensevals[2] = readMAX(2); //read EGT from the Max31856
+      updatePEAK(2); // EGT
+    }
+    
+    if (senseactive[3]) {
+      sensevals[3] = readPress(2, 3); // placeholder at the moment but should be very similar to the boost reading if a cheap pressure sensor is used (ie one which returns a linear voltage 0-5v based on presure)
+      updatePEAK(3); // OIL PRESSURE
+    }
+    
+    if (senseactive[4]) {
+      sensevals[4] = readERR2081(7, 4); // read A7, store at index 4 currently the Engine oil temp sensor
+      updatePEAK(4); // OIL TEMP
+    }
 
-    sensevals[2] = readMAX(2); //read EGT from the Max31856
-    updatePEAK(2); // EGT
-
-    sensevals[3] = readPress(2, 3); // placeholder at the moment but should be very similar to the boost reading if a cheap pressure sensor is used (ie one which returns a linear voltage 0-5v based on presure)
-    updatePEAK(3); // OIL PRESSURE
-
-    sensevals[4] = readERR2081(7, 4); // read A7, store at index 4 currently the Engine oil temp sensor
-    updatePEAK(4); // OIL TEMP
-
-    sensevals[5] = readCoolantLevel(6, 5); // read A6, to check if coolant level is low
-    //updatePEAK(5); // Coolant Level - no need to set a max as this is boolean
-
-    sensevals[6] = readADXL(6); // Inclinometer - Y (roll) angle
-    updatePEAK(6);
+    if (senseactive[5]) {
+      sensevals[5] = readCoolantLevel(6, 5); // read A6, to check if coolant level is low
+      //updatePEAK(5); // Coolant Level - no need to set a max as this is boolean
+    }
+    
+    if (senseactive[6]) {
+      sensevals[6] = readADXL(6); // Inclinometer - Y (roll) angle
+      updatePEAK(6);
+    }
 
     // DRAW DISPLAYS
     drawDISPLAY1();
@@ -129,54 +154,13 @@ void loop() {
 }
 
 void drawDISPLAY1(void) { // DISPLAY 1 is our Main guage display
-  // probably lots of room for improvement
-  int padding = 0;
-  float scalerange = 0;
-  int scaleposmin = 0;
+
   uint8_t sensor0 = posrot(1);
-  //uint8_t sensor0 = 6;
 
   drawSensor(0, display1, sensor0);
 
-  display1.drawLine(11, 52, 11, 54, WHITE); // draw our gauge and scale markings
-  display1.drawLine(64, 52, 64, 54, WHITE);
-  display1.drawLine(116, 52, 116, 54, WHITE);
-  display1.drawRect(11, 42, 106, 10, WHITE); //Border of the bar chart
-  if (senseminvals[sensor0] < 0) { // Work out a positive range of values that we need to plot
-    scaleposmin = senseminvals[sensor0] * -1;
-    scalerange = scaleposmin + sensemaxvals[sensor0];
-  } else {
-    scaleposmin = senseminvals[sensor0];
-    scalerange = sensemaxvals[sensor0] - scaleposmin;
-  }
-  display1.fillRect(14, 44, (100 / scalerange * (sensevals[sensor0] + scaleposmin)), 6, WHITE); //Draws the bar depending on the sensor value
-
-  display1.drawLine(13 + (100 / scalerange * (sensepeakvals[sensor0] + scaleposmin)), 41, 13 + (100 / scalerange * (sensepeakvals[sensor0] + scaleposmin)), 50, WHITE); // draw the peak value line;
-  if (sensevals[sensor0] < 100) { // adjust padding for the low value so it looks nice
-    padding = 0;
-  } else {
-    padding = -4;
-  }
-  display1.setCursor(8 + padding + (100 / scalerange * (sensepeakvals[sensor0] + scaleposmin)), 33); // set cursor with padding
-  display1.setTextSize(1);
-  display1.println(String(sensepeakvals[sensor0])); // and write the peak val
-  display1.setCursor(8, 57);
-  display1.println(String(senseminvals[sensor0])); // draw the minumum value
-  display1.setCursor(58, 57);
-  if (senseminvals[sensor0] < 100) { // adjust padding for the low value so it looks nice
-    padding = 8;
-  } else {
-    padding = 0;
-  }
-  display1.println(String(static_cast<int>(((sensemaxvals[sensor0] - senseminvals[sensor0]) / 2) - scaleposmin))); // draw the midpoint value
-  if (sensemaxvals[sensor0] < 100) { // adjust padding for the high value so it looks nice/doesnt wrap off screen
-    padding = 10;
-  } else {
-    padding = 5;
-  }
-  display1.setCursor(100 + padding, 57);
-  display1.println(String(sensemaxvals[sensor0])); // draw the maximum value
-
+  drawBarGraph(display1, sensor0);
+  
   display1.display();
   display1.clearDisplay();
 }
@@ -188,7 +172,7 @@ void drawDISPLAY2(void) { // DISPLAY 2 shows 2 sensors
   drawSensor(0, display2, sensor2);
 
   drawSensor(33, display2, sensor5);
-
+//  drawBarGraph(display2, sensor2);
   display2.display();
   display2.clearDisplay();
 }
@@ -200,7 +184,7 @@ void drawDISPLAY3(void) { // DISPLAY 3 shows 2 sensors
   drawSensor(0, display3, sensor3);
 
   drawSensor(33, display3, sensor4);
-
+//  drawBarGraph(display3, sensor3);
   display3.display();
   display3.clearDisplay();
 }
@@ -218,7 +202,7 @@ void drawSensor(uint8_t y, Adafruit_SSD1306 &refDisp, uint8_t sensor) {
   refDisp.setCursor(46, y + 9 + 15);
   refDisp.println(valIfnoErr(sensor));
   temp = valIfnoErr(sensor);
-  xoffset = (temp.length() * 13) + 3 ; // work out width of the characters so we can move the cursor to the correct position to display our units symbol
+  xoffset = (temp.length() * 13) + 5 ; // work out width of the characters so we can move the cursor to the correct position to display our units symbol
 
   if (sensefault[sensor] > 0 || sensor == 5) { // normal size text if it's an error message or it's our low coolant warning sensor
     refDisp.setTextSize(1);
@@ -290,6 +274,50 @@ void drawSensor(uint8_t y, Adafruit_SSD1306 &refDisp, uint8_t sensor) {
   refDisp.setFont(); //reset to basic font
 }
 
+void drawBarGraph(Adafruit_SSD1306 &refDisp, uint8_t sensor) {
+  int padding = 0;
+  float scalerange = 0;
+  int scaleposmin = 0;
+  
+  refDisp.drawLine(11, 52, 11, 54, WHITE); // draw our gauge and scale markings
+  refDisp.drawLine(64, 52, 64, 54, WHITE);
+  refDisp.drawLine(116, 52, 116, 54, WHITE);
+  refDisp.drawRect(11, 42, 106, 10, WHITE); //Border of the bar chart
+  if (senseminvals[sensor] < 0) { // Work out a positive range of values that we need to plot
+    scaleposmin = senseminvals[sensor] * -1;
+    scalerange = scaleposmin + sensemaxvals[sensor];
+  } else {
+    scaleposmin = senseminvals[sensor];
+    scalerange = sensemaxvals[sensor] - scaleposmin;
+  }
+  refDisp.fillRect(14, 44, (100 / scalerange * (sensevals[sensor] + scaleposmin)), 6, WHITE); //Draws the bar depending on the sensor value
+
+  refDisp.drawLine(13 + (100 / scalerange * (sensepeakvals[sensor] + scaleposmin)), 41, 13 + (100 / scalerange * (sensepeakvals[sensor] + scaleposmin)), 50, WHITE); // draw the peak value line;
+  if (sensevals[sensor] < 100) { // adjust padding for the low value so it looks nice
+    padding = 0;
+  } else {
+    padding = -4;
+  }
+  refDisp.setCursor(8 + padding + (100 / scalerange * (sensepeakvals[sensor] + scaleposmin)), 33); // set cursor with padding
+  refDisp.setTextSize(1);
+  refDisp.println(String(sensepeakvals[sensor])); // and write the peak val
+  refDisp.setCursor(8, 57);
+  refDisp.println(String(senseminvals[sensor])); // draw the minumum value
+  refDisp.setCursor(58, 57);
+  if (senseminvals[sensor] < 100) { // adjust padding for the low value so it looks nice
+    padding = 8;
+  } else {
+    padding = 0;
+  }
+  refDisp.println(String(static_cast<int>(((sensemaxvals[sensor] - senseminvals[sensor]) / 2) - scaleposmin))); // draw the midpoint value
+  if (sensemaxvals[sensor] < 100) { // adjust padding for the high value so it looks nice/doesnt wrap off screen
+    padding = 10;
+  } else {
+    padding = 5;
+  }
+  refDisp.setCursor(100 + padding, 57);
+  refDisp.println(String(sensemaxvals[sensor])); // draw the maximum value
+}
 
 bool hiloWARN(uint8_t sensorZ) {
   // this function toggles a an error flag if the current sensor is above it's high warning parameter - since the display is redrawn every 250ms it appears to flash
@@ -377,12 +405,25 @@ String valIfnoErr(uint8_t sensor) { //prevents values being displayed if we are 
 }
 
 uint8_t posrot(uint8_t location) { // this is used to shift our array of data around the screens
-  uint8_t pos[] = {0, 1, 2, 3, 4, 5, 6};
-  location = location - 1 + pos[rotation];
-  if (location > 6) {
-    location = location % 7;
+
+uint8_t count=0;
+uint8_t pos[sensecount];
+
+// now we populate the array with the active sensors
+  for (uint8_t locthisSensor = 0; locthisSensor < totalsensors; locthisSensor++) { 
+    if (senseactive[locthisSensor] == true) {
+      pos[count]=locthisSensor;
+      count++;
+    }
   }
-  return (location);
+  //uint8_t pos[] = {0, 1, 2, 3, 4, 5, 6};
+// return the correct sensor for the current location  
+  location = location - 1 + rotation;
+
+  if (location > count-1) {
+    location = location % count;
+  }
+  return (pos[location]);
 }
 
 int doFaults(int constraint, int checkval, int retval, uint8_t index) { //

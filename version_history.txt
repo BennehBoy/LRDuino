@@ -1,3 +1,7 @@
+Version 0.92
+Moved barchart drawing into a function, this can be called from any of the display drawing fuctions with a reference to the OLED object
+Made it so that sensors can be enabled/disabled at compile time - new array senseactive[]  The posrot function now populates based on active sensors only.
+
 Version 0.91
 Changed font used for values & errors to FreeSansBoldOblique12pt7b - nice TTF font, code amended to reflect baseline change in this font from standard.
 Tidied some repetetive fault checking code nto a helper function.
