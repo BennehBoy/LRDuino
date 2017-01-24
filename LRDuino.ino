@@ -1,24 +1,71 @@
 // LRDuino by Ben Anderson
-// Version 0.92
+// Version 0.93
 
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_MAX31856.h>
-#include <FaBo3Axis_ADXL345.h>
 #include "LRDuinoGFX.h"
 #include <Fonts/FreeSansBoldOblique12pt7b.h>
 
-// Following pinout details are for Ardunio Nano - be sure to adjust for your hadrware
-#define OLED_RESET  13  //LED
-#define OLED_CS     12
-#define OLED_DC     11  //MISO DC
-#define OLED_CLK    10  //D0
-#define OLED_MOSI    9  //D1
-#define OLED_CS_2    4
-#define OLED_CS_3    3
-#define MAX_CS       5  //Multiple software SPI because adafruit SSD1306 & MAX31856 libraries won't play nicely on the same bus
-#define MAX_DC       2  //MISO DI
-#define MAX_CLK      7  //CLK
-#define MAX_MOSI     6  //DO 
+#if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168__)
+  // Following pinout details are for Ardunio Nano/Uno - be sure to adjust for your hadrware
+  #define OLED_RESET  13  //LED
+  #define OLED_CS     12
+  #define OLED_DC     11  //MISO DC
+  #define OLED_CLK    10  //D0
+  #define OLED_MOSI    9  //D1
+  #define OLED_CS_2    4
+  #define OLED_CS_3    3
+  #define MAX_CS       5  //Multiple software SPI because adafruit SSD1306 & MAX31856 libraries won't play nicely on the same bus
+  #define MAX_DC       2  //MISO DI
+  #define MAX_CLK      7  //CLK
+  #define MAX_MOSI     6  //DO
+  // A4 is I2C SDA
+  // A5 is I2C SCL
+  #define ROTBUT       8 // our input button
+  #define DIVISOR      1023
+  #define A0           0 // boost
+  #define A1           1 // tbox temp
+  #define A2           2 // Oil pressure
+  #define A3           7 // Oil Temp
+  #define A4           6 // Coolane Level
+  
+  #include <FaBo3Axis_ADXL345.h> //use a smaller ADXL library (STM32 incompatible)
+
+  FaBo3Axis accel;
+#endif
+
+#if defined(_VARIANT_ARDUINO_STM32_)
+    // Following pinout details are for Maple Mini
+    #define OLED_RESET  12  //LED
+    #define OLED_CS     13
+    #define OLED_DC     14  //MISO DC
+    // 15 is I2C SDA (for ADXL)
+    // 16 is I2C SCL
+    #define OLED_CLK    17  //D0
+    #define OLED_MOSI   18  //D1
+    #define OLED_CS_2   19
+    #define OLED_CS_3   20
+    //#define OLED_CS_4   22
+    //#define OLED_CS_5   25
+    //#define OLED_CS_6   26
+    
+    #define MAX_CS      28 //Multiple software SPI because adafruit SSD1306 & MAX31856 libraries won't play nicely on the same bus
+    #define MAX_DC      29 //MISO DI
+    #define MAX_CLK     30 //CLK
+    #define MAX_MOSI    31 //DO
+    #define ROTBUT      21 // our input button
+    #define DIVISOR     4095
+    #define A0          11 // boost
+    #define A1          10 // tbox temp
+    #define A2          9  // Oil pressure
+    #define A3          8  // Oil Temp
+    #define A4          7  // Coolane Level
+
+    #include <Adafruit_Sensor.h>
+    #include <Adafruit_ADXL345_U.h>
+
+    Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
+#endif    
 
 Adafruit_MAX31856 max = Adafruit_MAX31856(MAX_CS, MAX_DC, MAX_MOSI, MAX_CLK); // seperate buses
 //Adafruit_MAX31856 max = Adafruit_MAX31856(MAX_CS, OLED_DC, OLED_MOSI, OLED_CLK); // shared bus
@@ -26,8 +73,9 @@ Adafruit_MAX31856 max = Adafruit_MAX31856(MAX_CS, MAX_DC, MAX_MOSI, MAX_CLK); //
 Adafruit_SSD1306 display1(OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS);
 Adafruit_SSD1306 display2(OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS_2);
 Adafruit_SSD1306 display3(OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS_3);
-
-FaBo3Axis accel;
+//Adafruit_SSD1306 display4(OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS_4);
+//Adafruit_SSD1306 display5(OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS_5);
+//Adafruit_SSD1306 display6(OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS_6);
 
 #if (SSD1306_LCDHEIGHT != 64)
 #error("Height incorrect, please fix Adafruit_SSD1306.h!");
@@ -64,19 +112,31 @@ void setup()   {
   display1.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, true); //construct our displays
   display2.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, false);
   display3.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, false);
-
+//  display4.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, false);
+//  display5.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, false);
+//  display6.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, false);
+  
   display1.clearDisplay();   // clears the screen and buffer
   display2.clearDisplay();   // clears the screen and buffer
   display3.clearDisplay();   // clears the screen and buffer
+//  display4.clearDisplay();   // clears the screen and buffer
+//  display5.clearDisplay();   // clears the screen and buffer
+//  display6.clearDisplay();   // clears the screen and buffer  
 
   //configure pin8 as an input and enable the internal pull-up resistor, this is for a button to control the rotation of sensors around the screen
-  pinMode(8, INPUT_PULLUP);
+  pinMode(ROTBUT, INPUT_PULLUP);
 
   max.begin(); //initialise the MAX31856
   max.setThermocoupleType(MAX31856_TCTYPE_K); // and set it to a K-type thermocouple - adjust for you hardware!
 
+#if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168__)
   accel.configuration(); // initialise ADXL345
   accel.powerOn();
+#endif
+
+#if defined(_VARIANT_ARDUINO_STM32_)
+  accel.begin(); //initialise ADXL345
+#endif
 
   // read our boost sensor rawADC value since at this point it should be atmospheric pressure...
   //atmos = readBoost(0,0);  // not actually used at this point so could be rmeoved
@@ -89,6 +149,13 @@ void setup()   {
 
     }
   }
+
+#if defined(_VARIANT_ARDUINO_STM32_)
+  // set up our analogue inputs on STM32
+  for (int x =3; x < 12; x++) {
+    pinMode(x, INPUT_ANALOG);
+  }
+#endif
 }
 
 void loop() {
@@ -96,13 +163,14 @@ void loop() {
   unsigned long currentMillis = millis(); //store the time
 
   // USER INTERACTION
-  bool butVal = digitalRead(8); // read the button state
+  bool butVal = digitalRead(ROTBUT); // read the button state
   if (butVal == LOW) {
     rotation = rotation + 1; // rotate the screens if the button was pressed
     previousMillis = previousMillis - (interval + 1); // force an update of the screens.
     if (rotation == sensecount) { // this should be total number of sensors in the main sensor array
       rotation = 0;
     }
+    delay(250);
   }
 
   if (currentMillis - previousMillis > interval) { // only read the sensors and draw the screen if 250 millis have passed
@@ -112,12 +180,12 @@ void loop() {
     // SENSOR READING
 
     if (senseactive[0]) {
-      sensevals[0] = readBoost(0, 0); // read boost off A0 and store at index 0
+      sensevals[0] = readBoost(A0, 0); // read boost off A0 and store at index 0
       updatePEAK(0); // TURBO
     }
 
     if (senseactive[1]) {
-      sensevals[1] = readERR2081(1, 1); // read A1, currently the Gearbox oil temp sensor
+      sensevals[1] = readERR2081(A1, 1); // read A1, currently the Gearbox oil temp sensor
       updatePEAK(1); // TBOX OIL TEMP
     }
     
@@ -127,17 +195,17 @@ void loop() {
     }
     
     if (senseactive[3]) {
-      sensevals[3] = readPress(2, 3); // placeholder at the moment but should be very similar to the boost reading if a cheap pressure sensor is used (ie one which returns a linear voltage 0-5v based on presure)
+      sensevals[3] = readPress(A2, 3); // placeholder at the moment but should be very similar to the boost reading if a cheap pressure sensor is used (ie one which returns a linear voltage 0-5v based on presure)
       updatePEAK(3); // OIL PRESSURE
     }
     
     if (senseactive[4]) {
-      sensevals[4] = readERR2081(7, 4); // read A7, store at index 4 currently the Engine oil temp sensor
+      sensevals[4] = readERR2081(A3, 4); // read A7, store at index 4 currently the Engine oil temp sensor
       updatePEAK(4); // OIL TEMP
     }
 
     if (senseactive[5]) {
-      sensevals[5] = readCoolantLevel(6, 5); // read A6, to check if coolant level is low
+      sensevals[5] = readCoolantLevel(A4, 5); // read A6, to check if coolant level is low
       //updatePEAK(5); // Coolant Level - no need to set a max as this is boolean
     }
     
@@ -150,6 +218,9 @@ void loop() {
     drawDISPLAY1();
     drawDISPLAY2();
     drawDISPLAY3();
+//    drawDISPLAY4();
+//    drawDISPLAY5();
+//    drawDISPLAY6();    
   }
 }
 
@@ -189,6 +260,35 @@ void drawDISPLAY3(void) { // DISPLAY 3 shows 2 sensors
   display3.clearDisplay();
 }
 
+//void drawDISPLAY4(void) { // DISPLAY 3 shows 2 sensors
+//  uint8_t sensor6 = posrot(6);
+//
+//  drawSensor(33, display4, sensor6);
+//  drawBarGraph(display4, sensor6);
+//  display4.display();
+//  display4.clearDisplay();
+//}
+//
+//void drawDISPLAY5(void) { // DISPLAY 3 shows 2 sensors
+//  uint8_t sensor5 = posrot(5);
+//
+//  drawSensor(33, display5, sensor5);
+//  drawBarGraph(display5, sensor5);
+//  display5.display();
+//  display5.clearDisplay();
+//}
+//
+//void drawDISPLAY6(void) { // DISPLAY 3 shows 2 sensors
+//  uint8_t sensor4 = posrot(4);
+//  
+//  drawSensor(33, display6, sensor4);
+//  drawBarGraph(display6, sensor4);
+//  display6.display();
+//  display6.clearDisplay();
+//}
+
+
+
 // Helper Functions
 
 void drawSensor(uint8_t y, Adafruit_SSD1306 &refDisp, uint8_t sensor) {
@@ -214,6 +314,7 @@ void drawSensor(uint8_t y, Adafruit_SSD1306 &refDisp, uint8_t sensor) {
   }
 
   refDisp.println(units(sensor));
+  
   if (sensor == 6) { // INCLINOMETER ONLY (ANIMATED)
     rolltemp = sensevals[sensor];
     if (rolltemp > -5 && rolltemp < 5) { // centred
@@ -321,7 +422,6 @@ void drawBarGraph(Adafruit_SSD1306 &refDisp, uint8_t sensor) {
 
 bool hiloWARN(uint8_t sensorZ) {
   // this function toggles a an error flag if the current sensor is above it's high warning parameter - since the display is redrawn every 250ms it appears to flash
-
   if (sensefault[sensorZ] > 0) { // we don't want to display a high or low warning if there's a sensor fault (ie wiring issue etc).
     return (false);
   }
@@ -440,29 +540,28 @@ int doFaults(int constraint, int checkval, int retval, uint8_t index) { //
 // Sensor reading code.
 
 int readERR2081(uint8_t sensorPin, uint8_t index) {
-  int raw = 0;           // variable to store the raw ADC input value
-  float Vin = 3.3;           // variable to store the measured VCC voltage
-  float Vout = 0;        // variable to store the output voltage
-  int R2 = 1000;         // variable to store the R2 value
-  float Rth = 0;          // variable to store the thermistor value
+  int raw = 0;     // variable to store the raw ADC input value
+  float Vin = 3.3; // variable to store the measured VCC voltage
+  float Vout = 0;  // variable to store the output voltage
+  int R2 = 1000;   // variable to store the R2 value
+  float Rth = 0;   // variable to store the thermistor value
 
   // THERMISTOR CODE
-  raw = analogRead(sensorPin);    // Reads the Input PIN
-  Vout = (Vin / 1023.0) * raw;    // Calculates the Voltage on the Input PIN
-  Rth = ((R2 * Vin) / Vout) - R2; //Calculates the Resistance of the Thermistor
-
-  float steinhart;                 //This next stage calculates the temp from the resistance
-  steinhart = Rth / 2012.2;     // (R/Ro)  therm @ 25C = 1986
-  steinhart = log(steinhart);                  // ln(R/Ro)
-  steinhart /= 3502;                   // 1/B * ln(R/Ro) b coefficient = 3344
+  raw = analogRead(sensorPin);      // Reads the Input PIN
+  Vout = (Vin / DIVISOR) * raw;     // Calculates the Voltage on the Input PIN
+  Rth = ((R2 * Vin) / Vout) - R2;   // Calculates the Resistance of the Thermistor
+  float steinhart;                  // This next stage calculates the temp from the resistance
+  steinhart = Rth / 2012.2;         // (R/Ro)  therm @ 25C = 1986
+  steinhart = log(steinhart);       // ln(R/Ro)
+  steinhart /= 3502;                // 1/B * ln(R/Ro) b coefficient = 3344
   steinhart += 1.0 / (25 + 273.15); // + (1/To) nominal temp is 25c
-  steinhart = 1.0 / steinhart;                 // Invert
-  steinhart -= 273.15;                         // convert to C
+  steinhart = 1.0 / steinhart;      // Invert
+  steinhart -= 273.15;              // convert to C
   // END THERMISTOR CODE
 
   // FAULT checking
   // Sensors should be connected with a 1K pulldown resistor - if there's is a connection fault a low raw read will indicate this.
-  return (doFaults(10, raw, int(steinhart), index));
+  return (doFaults(DIVISOR/100, raw, int(steinhart), index));
 }
 
 
@@ -470,11 +569,11 @@ int readBoost(uint8_t sensorPin, uint8_t index) {
   int rawval;
   float kpaval;
   float boost;
-  rawval = analogRead(sensorPin); // Read MAP sensor raw value on analog port 0
-  kpaval = rawval * 0.4878; // convert to kpa
-  boost = kpaval * 0.145038 - 14.5038; // Convert to psi and subtract atmospheric (sensor is absolute pressure)
+  rawval = analogRead(sensorPin);       // Read MAP sensor raw value on analog port 0
+  kpaval = rawval * 0.4878;             // convert to kpa
+  boost = kpaval * 0.145038 - 14.5038;  // Convert to psi and subtract atmospheric (sensor is absolute pressure)
   // process any faults
-  return (doFaults(10, rawval, int(boost), index));
+  return (doFaults(DIVISOR/100, rawval, int(boost), index));
 }
 
 int readMAX(uint8_t index) {
@@ -489,9 +588,8 @@ int readPress(uint8_t sensorPin, uint8_t index) {
   //just a dummy at present
   int p;
   p = analogRead(sensorPin);
-
   // process any faults
-  return (doFaults(10, p, p, index));
+  return (doFaults(DIVISOR/100, p, p, index));
 }
 
 bool readCoolantLevel(uint8_t sensorPin, uint8_t index) {
@@ -499,18 +597,32 @@ bool readCoolantLevel(uint8_t sensorPin, uint8_t index) {
   // use a pulldown resistor to enable fault monitoring
   int CoolantLevel;
   CoolantLevel = analogRead(sensorPin);
-
   // process any faults
-  return ((bool)doFaults(512, CoolantLevel, CoolantLevel, index));
+  return ((bool)doFaults(DIVISOR/2, CoolantLevel, CoolantLevel, index));
 }
 
 int readADXL(uint8_t index) {
+#if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168__)
+  // use fabo calls on uno/nano (smaller code/ram footprint
   int ax, ay, az;
   if (!accel.searchDevice()) {
     return (doFaults(1, 0, 0, index)); // set fault state if the ADXL345 is not connected
   }
   accel.readXYZ(&ax, &ay, &az);
-  // we're only interested in one axis for vehicle roll
+#endif
+
+#if defined(_VARIANT_ARDUINO_STM32_)
+  // use adafruit calls on STM32
+  sensors_event_t event;
+  accel.getEvent(&event);
+  double ax, ay, az;
+
+  ax = event.acceleration.x;
+  ay = event.acceleration.y;
+  az = event.acceleration.z;
+#endif
+  
+  // we're only interested in one axis for vehicle roll - picth may go in at a later date (just needs some gfx knocking up)
   //  double xAngle = atan( ax / (sqrt(square(ay) + square(az))));
   double yAngle = atan( ay / (sqrt(sq(ax) + sq(az))));
   //  double zAngle = atan( sqrt(square(ax) + square(ay)) / az);
