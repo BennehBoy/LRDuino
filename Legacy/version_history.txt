@@ -1,0 +1,54 @@
+Version 0.93
+STM32 support added
+Pins abdstracted to defines
+Added 'DIVISOR' definition - STM32 ADC is 12 bit so returns values 0-4095 whereas Nano/Uno is 10 bit with values 0-1023.  Sensor reading fucntions updated to use this.
+
+Version 0.92
+Moved barchart drawing into a function, this can be called from any of the display drawing fuctions with a reference to the OLED object
+Made it so that sensors can be enabled/disabled at compile time - new array senseactive[]  The posrot function now populates based on active sensors only.
+
+Version 0.91
+Changed font used for values & errors to FreeSansBoldOblique12pt7b - nice TTF font, code amended to reflect baseline change in this font from standard.
+Tidied some repetetive fault checking code nto a helper function.
+Changed some of the comments to hopefully make the code easier to follow.
+Fixed a bug where warning faulted sensors were displaying warning values - not really necessary to do this.
+Fixed a bug where display1 was drawing the sensor twice - meant that warnings/faults would not animate.
+
+Version 0.90
+Moved gfx to seperate .h file
+Added animation to the roll icon
+Added low warning values and code
+
+Version 0.89
+Overhauled the display code to look much prettier
+Reduced some memory usage by breaking out some of the display code into functions
+
+Version 0.88
+Version history broken out into seperate file
+Added Sensor data for the adxl345 to the array
+Added a graphic for roll
+Added a graphic for coolant level
+Updated the rotation code so that all sensors now rotate around the displays (1 extra OLED would mean all 7 could be shown at once)
+Updated the 'units' code so that boolean types (LOW, OK for coolant level)  degrees are now catered for * not happy with this yet, think it needs some sensor description in the array of sensors
+Changed from square() function to sq() - compatability with STM32
+
+Version 0.87
+Switched to Fabo ADXL345 library, this saves 1766 bytes of Progmem, and 223 bytes of Dyn mem!
+
+Version 0.86
+Decoupled sensor input pins from array index - read functions now need to also be passed the array index to store data
+Moved some pins around to accomodate i2c on a4,a5
+Added initial support for ADXL345 Accelerometer
+
+Version 0.85
+Fault signals now reset max recorded values to the minimum of the scalerange
+Fixed bug with screen rotation - it's not a good idea values outside of the bounds of and array! "if (faultWARN(6)==1)"
+Fixed bug analogue inputs need to correspond to their analogue pin, this is because the code implicitly expects them on those...
+
+Version 0.84
+Added low coolant warning, &assoicated variables & functions - shows on display1 only
+fixed bug in doWarnings() where we were directly referencing display 1 & 3 rather than passing in a reference to the display that we wanted to draw on
+reverted scalerange change to int back to float - graph was drawing only at left
+
+Version 0.83
+Initial upload to github
