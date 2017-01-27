@@ -1,3 +1,11 @@
+Version 0.94
+Removed Arduino nano/uno support - they don't have enough ram/gpio (version 0.93 will be kept in a 'legacy' folder for anyone wanting to hack against uno/nano)
+Added magnetometer support & a compass graphic HMC5883
+Moved all the sensor config into an array of structs
+Moved the audible warning code out of the display routine - this way alarms not on screen can be heard (at a higher beep rate)
+Expanded to 20 sensors (will define the most standard OBD PIDs here)
+Added pitch meter and associated animation gfx
+
 Version 0.93
 STM32 support added
 Pins abdstracted to defines
