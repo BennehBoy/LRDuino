@@ -3,8 +3,8 @@ In car multi gauge system - Arduino (Nano, Uno, STM32), 0.96" SPI OLED, MAX31856
 
 I started this project so that I could monitor some parts on my tuned Land Rover Discovery TD5 that are not covered by the stock ECU.  This does not mean that LRDuino is limited to use in any way on Land Rovers alone, even if they are the best 4x4 by far.
 
-Video of bench test system running (version 0.90)  
-[![Version 0.90 Video](https://img.youtube.com/vi/bRX4mIRZ1U4/0.jpg)](https://www.youtube.com/watch?v=bRX4mIRZ1U4)
+Video of bench test system running (version 0.94)  
+[![Version 0.94 Video](https://www.youtube.com/watch?v=KDIy4PNw3LQ)
 
 Sensor types currently supported:  
 NTC based coolant sensor - Bosch 0 280 130 026 / Land Rover ERR2081  
