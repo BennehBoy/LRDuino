@@ -1,5 +1,5 @@
 // LRDuino by Ben Anderson
-// Version 0.94  (STM32 Only)
+// Version 0.95  (STM32 Only)
 
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_MAX31856.h>
@@ -57,7 +57,9 @@ Adafruit_SSD1306 display3(OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS_3);
 
 typedef struct
 {
- bool senseactive;   
+ bool senseactive;
+ bool master;
+ uint8_t slaveID;
  bool warnstatus;    
  uint8_t sensefault;        
  const unsigned char* senseglyphs;
@@ -71,27 +73,27 @@ typedef struct
 } SingleSensor;
 
 SingleSensor Sensors[20] = {
-// active  warnstatus    sensefault senseglyphs sensevals  units maxvals minvals peakvals warnhivals warnlovals
-  {true,   false,        0,         trbBMP,     0,         1,    32,     0,      0,       29,        -999}, // Boost
-  {true,   false,        0,         tboxBMP,    0,         0,    150,    -40,    -40,     140,       -999}, // Transfer Box Temp
-  {true,   false,        0,         egtBMP,     0,         0,    900,    -40,    -40,     750,       -999}, // EGT
-  {true,   false,        0,         eopBMP,     0,         1,    72,     0,      0,       60,        20},   // Oil Pressure
-  {true,   false,        0,         eotBMP,     0,         0,    150,    -40,    -40,     100,       -999}, // Oil Temp
-  {true,   false,        0,         coollev,    0,         2,    1,      0,      1,       999,       1},    // Coolant Level
-  {true,   false,        0,         D2BMP,      0,         3,    45,     -45,    0,       30,        -30},  // Vehicle Roll
-  {true,   false,        0,         D2BMP,      0,         3,    60,     -60,    0,       45,        -45},  // Vehicle Pitch
-  {true,   false,        0,         compass,    0,         3,    360,    0,      0,       999,       -999}, // Magnetometer
-  {false,  false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
-  {false,  false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
-  {false,  false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
-  {false,  false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
-  {false,  false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
-  {false,  false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
-  {false,  false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
-  {false,  false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
-  {false,  false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
-  {false,  false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
-  {false,  false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45}   // DUMMY
+// active  master slaveID warnstatus    sensefault senseglyphs sensevals  units maxvals minvals peakvals warnhivals warnlovals
+  {true,   true,  99,     false,        0,         trbBMP,     0,         1,    32,     0,      0,       29,        -999}, // Boost
+  {true,   true,  99,     false,        0,         tboxBMP,    0,         0,    150,    -40,    -40,     140,       -999}, // Transfer Box Temp
+  {true,   true,  99,     false,        0,         egtBMP,     0,         0,    900,    -40,    -40,     750,       -999}, // EGT
+  {true,   true,  4,      false,        0,         eopBMP,     0,         1,    72,     0,      0,       60,        20},   // Oil Pressure
+  {true,   false, 99,     false,        0,         eotBMP,     0,         0,    150,    -40,    -40,     100,       -999}, // Oil Temp
+  {true,   true,  99,     false,        0,         coollev,    0,         2,    1,      0,      1,       999,       1},    // Coolant Level
+  {true,   true,  7,      false,        0,         D2BMP,      0,         3,    45,     -45,    0,       30,        -30},  // Vehicle Roll
+  {true,   false, 99,     false,        0,         D2BMP,      0,         3,    60,     -60,    0,       45,        -45},  // Vehicle Pitch
+  {true,   true,  99,     false,        0,         compass,    0,         3,    360,    0,      0,       999,       -999}, // Magnetometer
+  {false,  true,  99,     false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
+  {false,  true,  99,     false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
+  {false,  true,  99,     false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
+  {false,  true,  99,     false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
+  {false,  true,  99,     false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
+  {false,  true,  99,     false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
+  {false,  true,  99,     false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
+  {false,  true,  99,     false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
+  {false,  true,  99,     false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
+  {false,  true,  99,     false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45},  // DUMMY
+  {false,  true,  99,     false,        0,         trbBMP,     0,         1,    60,     0,      0,       45,        -45}   // DUMMY
 };
 
 uint8_t sensecount = 0;
@@ -138,7 +140,7 @@ void setup()   {
   // count the number of active sensors
   // first we need to dimension the array
   for (uint8_t thisSensor = 0; thisSensor < totalsensors; thisSensor++) {
-    if (Sensors[thisSensor].senseactive==true) {
+    if (Sensors[thisSensor].senseactive==true && Sensors[thisSensor].master == true) { // don't count slaves
       sensecount++;
 
     }
@@ -223,50 +225,71 @@ void loop() {
     }  
 
     // DRAW DISPLAYS
-    drawDISPLAY1();
-    drawDISPLAY2();
-    drawDISPLAY3();
+    drawDISPLAY(display1, 1);
+    drawDISPLAY(display2, 2);
+    drawDISPLAY(display3, 3);
 //    drawDISPLAY4();
 //    drawDISPLAY5();
 //    drawDISPLAY6();    
   }
 }
 
-void drawDISPLAY1(void) { // DISPLAY 1 is our Main guage display
+// 4 screens - use index values like this to rotate around the displays
+// 1 2
+// 4 3
 
-  uint8_t sensor0 = posrot(1);
+// 6 screens - use index values like this to rotate around the displays
+// 1 2 3
+// 6 5 4
 
-  drawSensor(0, display1, sensor0);
+// 8 screens - use index values like this to rotate around the displays
+// 1 2 3 4
+// 8 7 6 5
 
-  drawBarGraph(display1, sensor0);
-  
-  display1.display();
-  display1.clearDisplay();
+void drawDISPLAY(Adafruit_SSD1306 &refDisp, uint8_t index) { // DISPLAY 1 is our Main guage display
+
+  uint8_t sensor0 = posrot(index);
+
+if (sensor0 == 8) { // draw compass
+  displayCompass(32,32,30, refDisp, sensor0);
+  drawSensor(15, 20, refDisp, sensor0, false);  
+} else {
+
+  if (Sensors[sensor0].slaveID !=99) { // draw paired sensors
+    drawSensor(0, 0, refDisp, sensor0, true);
+    drawSensor(33, 0, refDisp, Sensors[sensor0].slaveID, true);
+  } else {
+    drawSensor(0, 0, refDisp, sensor0, true); // draw all other sensors with a standard bargraph
+    drawBarGraph(refDisp, sensor0);
+  }
+}
+  refDisp.display();
+  refDisp.clearDisplay();
 }
 
-void drawDISPLAY2(void) { // DISPLAY 2 shows 2 sensors
-  uint8_t sensor2 = posrot(2);
-  uint8_t sensor5 = posrot(5);
-
-  drawSensor(0, display2, sensor2);
-
-  drawSensor(33, display2, sensor5);
-//  drawBarGraph(display2, sensor2);
-  display2.display();
-  display2.clearDisplay();
-}
-
-void drawDISPLAY3(void) { // DISPLAY 3 shows 2 sensors
-  uint8_t sensor3 = posrot(3);
-  uint8_t sensor4 = posrot(4);
-
-  drawSensor(0, display3, sensor3);
-
-  drawSensor(33, display3, sensor4);
-//  drawBarGraph(display3, sensor3);
-  display3.display();
-  display3.clearDisplay();
-}
+//void drawDISPLAY2(void) { // DISPLAY 2 shows 2 sensors
+//  uint8_t sensor2 = posrot(2);
+//  uint8_t sensor5 = posrot(5);
+//
+//  drawSensor(0, 0, display2, sensor2, true);
+//
+//  drawSensor(33, 0,  display2, sensor5, true);
+////  drawBarGraph(display2, sensor2);
+//  display2.display();
+//  display2.clearDisplay();
+//}
+//
+//void drawDISPLAY3(void) { // DISPLAY 3 shows 2 sensors
+//  uint8_t sensor3 = posrot(3);
+//  uint8_t sensor4 = posrot(4);
+//
+//  drawSensor(0, 0, display3, sensor3, true);
+//
+//  drawSensor(33, 0, display3, sensor4, true);
+////  drawBarGraph(display3, sensor3);
+//  display3.display();
+//  display3.clearDisplay();
+//}
 
 //void drawDISPLAY4(void) { // DISPLAY 3 shows 2 sensors
 //  uint8_t sensor6 = posrot(6);
@@ -299,29 +322,25 @@ void drawDISPLAY3(void) { // DISPLAY 3 shows 2 sensors
 
 // Helper Functions
 
-void drawSensor(uint8_t y, Adafruit_SSD1306 &refDisp, uint8_t sensor) {
+void drawSensor(uint8_t y, uint8_t x, Adafruit_SSD1306 &refDisp, uint8_t sensor, bool icons) {
   uint8_t xoffset = 0;
   String temp;
   int8_t rolltemp = 0;
-  refDisp.setTextSize(1);
-  refDisp.setTextColor(WHITE);
+
   refDisp.setTextWrap(false);
+  
   refDisp.setFont(&FreeSansBoldOblique12pt7b); //switch to a nice ttf font 12x7
-  refDisp.setCursor(46, y + 9 + 15);
-  refDisp.println(valIfnoErr(sensor));
+  display_item(46+x, y + 9 + 15, valIfnoErr(sensor), 1, refDisp); // x should only be given a value if we are not showing icons (eg for the compass display)
+  
   temp = valIfnoErr(sensor);
   xoffset = (temp.length() * 13) + 5 ; // work out width of the characters so we can move the cursor to the correct position to display our units symbol
 
   if (Sensors[sensor].sensefault > 0 || sensor == 5) { // normal size text if it's an error message or it's our low coolant warning sensor
-    refDisp.setTextSize(1);
-    refDisp.setCursor(46 + xoffset, y + 9 + 15);
+    display_item(46+x + xoffset, y + 9 + 15, units(sensor), 1, refDisp);
   }  else {
-    refDisp.setFont();
-    refDisp.setTextSize(1);
-    refDisp.setCursor(46 + xoffset, y + 9);
+    refDisp.setFont(); // switch to small standard font
+    display_item(46+x + xoffset, y + 9, units(sensor), 1, refDisp);
   }
-
-  refDisp.println(units(sensor));
   
   if (sensor == 6) { // INCLINOMETER ONLY (ANIMATED)
     rolltemp = Sensors[sensor].sensevals;
@@ -400,28 +419,26 @@ void drawSensor(uint8_t y, Adafruit_SSD1306 &refDisp, uint8_t sensor) {
     } else if (rolltemp >= 60 && rolltemp < 70) { //60 deg
       refDisp.drawBitmap(0, y, D2p60R, 32, 32, WHITE);
 
-
       // WARNING CASE
     } else if (rolltemp < -60 || rolltemp > 60) { // WARNING!
-      refDisp.drawBitmap(0, y, D2aWARN, 32, 32, WHITE);
+      if (icons) {
+        refDisp.drawBitmap(0, y, D2aWARN, 32, 32, WHITE);
+      }
     }
-
-
     
   } else {
     //ALL OTHER SENSORS
-    refDisp.drawBitmap(0, y, Sensors[sensor].senseglyphs, 32, 32, WHITE);
+    if(icons) {
+      refDisp.drawBitmap(0, y, Sensors[sensor].senseglyphs, 32, 32, WHITE);
+    }
   }
   // DO sensor visual warnings
-  if (hiloWARN(sensor, true)) {
+  if (hiloWARN(sensor, true) && icons) {
     refDisp.drawBitmap(100, y + 4, triBMP, 24, 24, WHITE); //outut the warning triangle
-//    if (PIEZO > 0) {
-//      tone(PIEZO, 2000, 200);
-//    }
   }
-  if (faultWARN(sensor) == 1) {
+  if (faultWARN(sensor) == 1 && icons) {
     refDisp.drawBitmap(100, y + 4, NoConn, 24, 24, WHITE); //output the disconnected sensor icon
-  }
+  } 
   refDisp.setFont(); //reset to basic font
 }
 
@@ -442,18 +459,14 @@ void drawBarGraph(Adafruit_SSD1306 &refDisp, uint8_t sensor) {
     scalerange = Sensors[sensor].sensemaxvals - scaleposmin;
   }
   refDisp.fillRect(14, 44, (100 / scalerange * (Sensors[sensor].sensevals + scaleposmin)), 6, WHITE); //Draws the bar depending on the sensor value
-
   refDisp.drawLine(13 + (100 / scalerange * (Sensors[sensor].sensepeakvals + scaleposmin)), 41, 13 + (100 / scalerange * (Sensors[sensor].sensepeakvals + scaleposmin)), 50, WHITE); // draw the peak value line;
   if (Sensors[sensor].sensevals < 100) { // adjust padding for the low value so it looks nice
     padding = 0;
   } else {
     padding = -4;
   }
-  refDisp.setCursor(8 + padding + (100 / scalerange * (Sensors[sensor].sensepeakvals + scaleposmin)), 33); // set cursor with padding
-  refDisp.setTextSize(1);
-  refDisp.println(String(Sensors[sensor].sensepeakvals)); // and write the peak val
-  refDisp.setCursor(8, 57);
-  refDisp.println(String(Sensors[sensor].senseminvals)); // draw the minumum value
+  display_item(8 + padding + (100 / scalerange * (Sensors[sensor].sensepeakvals + scaleposmin)), 33, String(Sensors[sensor].sensepeakvals), 1, refDisp); // set cursor with padding & write the peak val
+  display_item(8, 57, String(Sensors[sensor].senseminvals), 1, refDisp); // draw the minumum value
   refDisp.setCursor(58, 57);
   if (Sensors[sensor].senseminvals < 100) { // adjust padding for the low value so it looks nice
     padding = 8;
@@ -466,8 +479,55 @@ void drawBarGraph(Adafruit_SSD1306 &refDisp, uint8_t sensor) {
   } else {
     padding = 5;
   }
-  refDisp.setCursor(100 + padding, 57);
-  refDisp.println(String(Sensors[sensor].sensemaxvals)); // draw the maximum value
+  display_item(100 + padding, 57, String(Sensors[sensor].sensemaxvals), 1, refDisp);
+}
+
+void display_item(int x, int y, String token, int txt_size, Adafruit_SSD1306 &refDisp) {
+  refDisp.setCursor(x, y);
+  refDisp.setTextColor(WHITE);
+  refDisp.setTextSize(txt_size);
+  refDisp.print(token);
+  refDisp.setTextSize(1); // Back to default text size
+}
+
+void arrow(int x2, int y2, int x1, int y1, int alength, int awidth, int colour, Adafruit_SSD1306 &refDisp) {
+  float distance;
+  int dx, dy, x2o,y2o,x3,y3,x4,y4,k;
+  distance = sqrt(pow((x1 - x2),2) + pow((y1 - y2), 2));
+  dx = x2 + (x1 - x2) * alength / distance;
+  dy = y2 + (y1 - y2) * alength / distance;
+  k = awidth / alength;
+  x2o = x2 - dx;
+  y2o = dy - y2;
+  x3 = y2o * k + dx;
+  y3 = x2o * k + dy;
+  x4 = dx - y2o * k;
+  y4 = dy - x2o * k;
+  refDisp.drawLine(x1, y1, x2, y2, colour);
+  refDisp.drawLine(x1, y1, dx, dy, colour);
+  refDisp.drawLine(x3, y3, x4, y4, colour);
+  refDisp.drawLine(x3, y3, x2, y2, colour);
+  refDisp.drawLine(x2, y2, x4, y4, colour);
+} 
+
+void displayCompass(uint8_t centreX, uint8_t centreY, uint8_t radius, Adafruit_SSD1306 &refDisp, uint8_t sensor) {
+  int dxo, dyo, dxi, dyi, dx, dy;
+  refDisp.drawCircle(centreX,centreY,radius,WHITE);  // Draw compass circle
+  for (float i = 0; i <360; i = i + 22.5) {
+    dxo = radius * cos(i*3.14/180);
+    dyo = radius * sin(i*3.14/180);
+    dxi = dxo * 0.95;
+    dyi = dyo * 0.95;
+    refDisp.drawLine(dxi+centreX,dyi+centreY,dxo+centreX,dyo+centreY,WHITE);   
+  }
+  display_item((centreX-2),(centreY-24),"N",1,refDisp);
+  display_item((centreX-2),(centreY+17),"S",1,refDisp);
+  display_item((centreX+19),(centreY-3),"E",1,refDisp);
+  display_item((centreX-23),(centreY-3),"W",1,refDisp);
+
+  dx = (0.7*radius * cos((Sensors[sensor].sensevals-90)*3.14/180)) + centreX;  // calculate X position for the screen coordinates - can be confusing!
+  dy = (0.7*radius * sin((Sensors[sensor].sensevals-90)*3.14/180)) + centreY;
+  arrow(dx,dy, centreX, centreY, 2, 2,WHITE, refDisp); 
 }
 
 bool hiloWARN(uint8_t sensor, bool toggle) {
@@ -475,30 +535,29 @@ bool hiloWARN(uint8_t sensor, bool toggle) {
   if (Sensors[sensor].sensefault > 0 && sensor !=5) { // we don't want to display a high or low warning if there's a sensor fault (ie wiring issue etc).
     return (false);
   }
-
-  
-  if (Sensors[sensor].sensevals > Sensors[sensor].sensewarnhivals || Sensors[sensor].sensevals < Sensors[sensor].sensewarnlowvals) {
-    if (Sensors[sensor].warnstatus == true) {
-      if (toggle) {
+  if (Sensors[sensor].sensevals > Sensors[sensor].sensewarnhivals || Sensors[sensor].sensevals < Sensors[sensor].sensewarnlowvals) { // if we're under the min or over the max then warn!
+    if (Sensors[sensor].warnstatus == true) { // if we're already in a wanring state
+      if (toggle) { // only used when being called from inside the display because we use this to flash the warning icons - tones are dealt with outside the display loop (eg if we have more sensors than we can draw at once)
         Sensors[sensor].warnstatus = false; // we toggle the value so that the warning triangle flashes based on the interval we are looping at in loop()
       }
       return(false);
     } else {
       if (toggle) {
-        Sensors[sensor].warnstatus = true;
+        Sensors[sensor].warnstatus = true; 
       }
       return(true);
     }
-  } else {
+  } else { // otherwise return false
     if (toggle) {
       Sensors[sensor].warnstatus = false;
     }
     return false;
   }
-  return (Sensors[sensor].warnstatus);
+  return (Sensors[sensor].warnstatus); // return the current value in the case that there's a connection issue
 }
 
 void audibleWARN(uint8_t sensor) {
+  // sound the buzzer if their's a warning condition
   if (hiloWARN(sensor, false)) {
     if (PIEZO > 0) {
       tone(PIEZO, 2000, 200);
@@ -574,19 +633,18 @@ String valIfnoErr(uint8_t sensor) { //prevents values being displayed if we are 
 }
 
 uint8_t posrot(uint8_t location) { // this is used to shift our array of data around the screens
+  uint8_t count=0;
+  uint8_t pos[sensecount];
 
-uint8_t count=0;
-uint8_t pos[sensecount];
-
-// now we populate the array with the active sensors
+  // now we populate the array with the active sensors
   for (uint8_t locthisSensor = 0; locthisSensor < totalsensors; locthisSensor++) { 
-    if (Sensors[locthisSensor].senseactive == true) {
+    if (Sensors[locthisSensor].senseactive == true && Sensors[locthisSensor].master == true) {
       pos[count]=locthisSensor;
       count++;
     }
   }
-  //uint8_t pos[] = {0, 1, 2, 3, 4, 5, 6};
-// return the correct sensor for the current location  
+  // uint8_t pos[] = {0, 1, 2, 3, 4, 5, 6};
+  // return the correct sensor for the current location  
   location = location - 1 + rotation;
 
   if (location > count-1) {
