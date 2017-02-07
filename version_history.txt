@@ -1,3 +1,13 @@
+Version 0.96
+Moved MAX31586 & SSD1306 devices to shared HW SPI bus. This incorporates several pin wiring changes.
+Ditched Adafruit_31586 library in favour of custom code
+Now uses 8 OLED displays
+Prelimary bluetooth code included & OBD2 sensors using ELM 327 library.
+OBD sensors added to sensor structure - this will expand to cover most common PID's
+Pins are now initialised to correct state and input/ouput definition.
+Added units 'rpm' & 'mph'
+Various formatting changes for readability
+
 Version 0.95
 Added compass graphic
 Added sensor pairing
