@@ -1,5 +1,5 @@
 // LRDuino by Ben Anderson
-// Version 0.95  (STM32 Only)
+// Version 0.96  (STM32 Only)
 
 #include <Adafruit_SSD1306.h>
 #include "LRDuinoGFX.h"
@@ -96,8 +96,8 @@ SingleSensor Sensors[20] = {
   {true,   true,  7,      false,        0,         D2BMP,      0,         3,    45,     -45,    0,       30,        -30},  // Vehicle Roll
   {true,   false, 99,     false,        0,         D2BMP,      0,         3,    60,     -60,    0,       45,        -45},  // Vehicle Pitch
   {true,   true,  99,     false,        0,         compass,    0,         3,    360,    0,      0,       999,       -999}, // Magnetometer
-  {true,   true,  99,     false,        0,         Gauge,      750,         4,    4500,   700,    0,       4500,      600},  // RPM
-  {false,   true,  99,     false,        0,         Gauge,      0,         5,    100,    -30,    0,       100,       -30},  // Roadspeed
+  {true,   true,  99,     false,        0,         Gauge,      750,       4,    4500,   0,      0,       4500,      600},  // RPM
+  {false,  true,  99,     false,        0,         Gauge,      0,         5,    100,    -30,    0,       100,       -30},  // Roadspeed
   {false,  true,  99,     false,        0,         OBDII,      0,         1,    60,     0,      0,       45,        -45},  // DUMMY
   {false,  true,  99,     false,        0,         OBDII,      0,         1,    60,     0,      0,       45,        -45},  // DUMMY
   {false,  true,  99,     false,        0,         OBDII,      0,         1,    60,     0,      0,       45,        -45},  // DUMMY
