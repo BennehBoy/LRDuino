@@ -4,6 +4,7 @@
 #include <Adafruit_SSD1306.h>
 #include "LRDuinoGFX.h"
 #include <Fonts/FreeSansBoldOblique12pt7b.h>
+#include <Fonts/FreeSansBoldOblique24pt7b.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_ADXL345_U.h>
 #include <Adafruit_HMC5883_U.h>
@@ -12,7 +13,7 @@
 #define ELM_BAUD_RATE 9600
 #define ELM_PORT Serial3
 
-#include <ELM327.h>
+#include "ELM327.h"
 
 // Following pinout details are for Maple Mini
 #define OLED_RESET  12
@@ -29,7 +30,7 @@
 #define OLED_CS_6   26
 #define OLED_CS_7   27
 #define OLED_CS_8   28
-#define MAX_CS      29 
+#define MAX_CS      29
 #define MAX_MISO    5 // SPI MISO
 #define ROTBUT      21 // our input button
 #define A0          11 // boost
@@ -37,7 +38,7 @@
 #define A2          9  // Oil pressure
 #define A3          8  // Oil Temp
 #define A4          7  // Coolant Level
-#define PIEZO       3  
+#define PIEZO       3
 
 #define DIVISOR     4095
 
@@ -47,6 +48,7 @@ byte RegisterValues[] =    {0x90,  0x03,   0xFC,   0x7F,   0xC0,   0x07,     0xF
 String RegisterNames[] =   {"CR0", "CR1", "MASK", "CJHF", "CHLF", "LTHFTH", "LTHFTL", "LTLFTH", "LTLFTL", "CJTO"};
 byte RegisterAddresses[] = {0x00,  0x01,   0x02,   0x03,   0x04,   0x04,     0x06,     0x07,     0x08,     0x09 };
 
+byte status;
 Elm327 Elm;
 
 Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
@@ -86,7 +88,7 @@ typedef struct
 } SingleSensor;
 
 SingleSensor Sensors[20] = {
-//active   master slaveID warnstatus    sensefault senseglyphs sensevals  units maxvals minvals peakvals warnhivals warnlovals
+  //active   master slaveID warnstatus    sensefault senseglyphs sensevals  units maxvals minvals peakvals warnhivals warnlovals
   {true,   true,  99,     false,        0,         trbBMP,     0,         1,    32,     0,      0,       29,        -999}, // Boost
   {true,   true,  99,     false,        0,         tboxBMP,    0,         0,    150,    -40,    -40,     140,       -999}, // Transfer Box Temp
   {true,   true,  99,     false,        0,         egtBMP,     0,         0,    900,    -40,    -40,     750,       -999}, // EGT
@@ -97,7 +99,7 @@ SingleSensor Sensors[20] = {
   {true,   false, 99,     false,        0,         D2BMP,      0,         3,    60,     -60,    0,       45,        -45},  // Vehicle Pitch
   {true,   true,  99,     false,        0,         compass,    0,         3,    360,    0,      0,       999,       -999}, // Magnetometer
   {true,   true,  99,     false,        0,         Gauge,      750,       4,    4500,   0,      0,       4500,      600},  // RPM
-  {false,  true,  99,     false,        0,         Gauge,      0,         5,    100,    -30,    0,       100,       -30},  // Roadspeed
+  {true,   true,  99,     false,        0,         Gauge,      0,         5,    100,    -30,    0,       100,       -30},  // Roadspeed
   {false,  true,  99,     false,        0,         OBDII,      0,         1,    60,     0,      0,       45,        -45},  // DUMMY
   {false,  true,  99,     false,        0,         OBDII,      0,         1,    60,     0,      0,       45,        -45},  // DUMMY
   {false,  true,  99,     false,        0,         OBDII,      0,         1,    60,     0,      0,       45,        -45},  // DUMMY
@@ -121,15 +123,9 @@ uint8_t interval = 250;         // interval at which to update displays(millisec
 
 void setup()   {
   //start serial connection
-  //Serial.begin(9600);  //uncomment to send serial debug info
-
+  Serial.begin(9600);  //uncomment to send serial debug info
   // HC05 init
-  //Serial3.begin(9600);
-  //Serial3.println("It lives!");
-  byte statuz;
-  statuz=Elm.begin();
-  byte result;
-  Elm.engineLoad(statuz);
+  Elm.begin();
 
   // Pin setup
   pinMode (OLED_CS, OUTPUT);
@@ -152,7 +148,7 @@ void setup()   {
   digitalWrite(MAX_CS, HIGH);
 
   InitializeChannel(MAX_CS); // Init the MAX31856
-  
+
   display1.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, true); //construct our displays
   display2.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, false);
   display3.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, false);
@@ -161,7 +157,7 @@ void setup()   {
   display6.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, false);
   display7.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, false);
   display8.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, false);
-  
+
   display1.clearDisplay();   // clears the screen and buffer
   display2.clearDisplay();   // clears the screen and buffer
   display3.clearDisplay();   // clears the screen and buffer
@@ -178,8 +174,8 @@ void setup()   {
   display5.display();
   display6.display();
   display7.display();
-  display8.display(); 
-  
+  display8.display();
+
   //configure pin8 as an input and enable the internal pull-up resistor, this is for a button to control the rotation of sensors around the screen
   pinMode(ROTBUT, INPUT_PULLUP);
 
@@ -276,6 +272,30 @@ void loop() {
       // no audible warning for compass heading
     }
 
+    if (Sensors[9].senseactive) {
+      int intRPM = 0;
+      int status;
+      status = Elm.engineRPM(intRPM);
+      Sensors[9].sensevals = intRPM;
+
+      if (status != ELM_SUCCESS) {
+        Serial.print("ERROR: ");
+        Serial.println(status);
+      }
+    }
+
+    if (Sensors[10].senseactive) {
+      byte intMPH = 0;
+      int status;
+      status = Elm.vehicleSpeed(intMPH);
+      Sensors[10].sensevals = int(intMPH);
+
+      if (status != ELM_SUCCESS) {
+        Serial.print("ERROR: ");
+        Serial.println(status);
+      }
+    }
+
     // DRAW DISPLAYS
     drawDISPLAY(display1, 1);
     drawDISPLAY(display2, 2);
@@ -307,18 +327,18 @@ void drawDISPLAY(Adafruit_SSD1306 &refDisp, uint8_t index) { // DISPLAY 1 is our
   if (sensor0 == 8) { // draw compass
     drawCompass(32, 32, 30, refDisp, sensor0);
     drawSensor(15, 20, refDisp, sensor0, false);
+  } else if (Sensors[sensor0].slaveID != 99) { // draw paired sensors
+    drawSensor(0, 0, refDisp, sensor0, true);
+    drawSensor(33, 0, refDisp, Sensors[sensor0].slaveID, true);
+  } else if ((sensor0 == 9) || (sensor0 == 10)) {
+    drawOBD(refDisp, sensor0);
   } else {
-
-    if (Sensors[sensor0].slaveID != 99) { // draw paired sensors
-      drawSensor(0, 0, refDisp, sensor0, true);
-      drawSensor(33, 0, refDisp, Sensors[sensor0].slaveID, true);
-    } else {
-      drawSensor(0, 0, refDisp, sensor0, true); // draw all other sensors with a standard bargraph
-      drawBarGraph(refDisp, sensor0);
-    }
+    drawSensor(0, 0, refDisp, sensor0, true); // draw all other sensors with a standard bargraph
+    drawBarGraph(refDisp, sensor0);
   }
-  refDisp.display();
-  refDisp.clearDisplay();
+
+refDisp.display();
+refDisp.clearDisplay();
 }
 
 
@@ -441,6 +461,26 @@ void drawSensor(uint8_t y, uint8_t x, Adafruit_SSD1306 &refDisp, uint8_t sensor,
   if (faultWARN(sensor) == 1 && icons) {
     refDisp.drawBitmap(100, y + 4, NoConn, 24, 24, WHITE); //output the disconnected sensor icon
   }
+  refDisp.setFont(); //reset to basic font
+}
+
+void drawOBD(Adafruit_SSD1306 &refDisp, uint8_t sensor) {
+  uint8_t xoffset = 0;
+  String temp;
+  int8_t rolltemp = 0;
+
+  refDisp.setTextWrap(false);
+
+  refDisp.setFont(&FreeSansBoldOblique12pt7b); //switch to a nice ttf font 12x7
+  
+  refDisp.drawBitmap(95, 38, Sensors[sensor].senseglyphs, 32, 32, WHITE); //draw the sensor icon
+  
+  display_item(40, 60, units(sensor), 1, refDisp);
+  
+  refDisp.setFont(&FreeSansBoldOblique24pt7b);
+  
+  display_item(10, 34, valIfnoErr(sensor), 1, refDisp); // draw the value
+
   refDisp.setFont(); //reset to basic font
 }
 

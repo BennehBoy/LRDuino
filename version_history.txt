@@ -1,3 +1,7 @@
+Version 0.97
+OBD Support added - at this stage it is using a modified version of -> https://github.com/irvined1982/arduino-ELM327  Main changes are to filter out all non alpha chars & the ELM prompt '>' to allow interfacing with obdsim running on a windows xp virtual machine in virtualbox via a bluetooth com port.
+Large font OBD sensor drawing fucntion added for RPM, MPH
+
 Version 0.96
 Moved MAX31586 & SSD1306 devices to shared HW SPI bus. This incorporates several pin wiring changes.
 Ditched Adafruit_31586 library in favour of custom code
