@@ -617,7 +617,6 @@ byte Elm327::runCommand(const char *cmd, char *data, unsigned int dataLength)
   int counter;
   bool found;
   byte temp;
-  String inString;
 
   // Start reading the data right away and don't stop
   // until either the requested number of bytes has
@@ -633,7 +632,6 @@ byte Elm327::runCommand(const char *cmd, char *data, unsigned int dataLength)
       temp = ELM_PORT.read();
       if ((temp >= 48 && temp <= 57) || (temp >= 97 && temp <= 122) || (temp >= 65 && temp <= 90) || (temp == 62) || (temp == 32)) {
         data[counter] = temp;
-        inString = inString + char(temp);
         if (  data[counter] == '>' ) {
           found = true;
           data[counter] = '\0';
@@ -643,7 +641,6 @@ byte Elm327::runCommand(const char *cmd, char *data, unsigned int dataLength)
       }
     }
   }
-  Serial.println(inString);
   // If there is still data pending to be read, raise OVERFLOW error.
   if (!found  && counter >= dataLength)
   {

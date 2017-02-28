@@ -22,7 +22,7 @@
 
 #ifndef ELM_TIMEOUT
 #warning "ELM_TIMEOUT must be defined."
-#define ELM_TIMEOUT 9000
+#define ELM_TIMEOUT 1000
 #endif
 
 #ifndef ELM_BAUD_RATE

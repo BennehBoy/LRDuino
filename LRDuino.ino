@@ -125,6 +125,7 @@ void setup()   {
   //start serial connection
   Serial.begin(9600);  //uncomment to send serial debug info
   // HC05 init
+  delay(1000);
   Elm.begin();
 
   // Pin setup
@@ -465,9 +466,7 @@ void drawSensor(uint8_t y, uint8_t x, Adafruit_SSD1306 &refDisp, uint8_t sensor,
 }
 
 void drawOBD(Adafruit_SSD1306 &refDisp, uint8_t sensor) {
-  uint8_t xoffset = 0;
-  String temp;
-  int8_t rolltemp = 0;
+  int xposition = 0;
 
   refDisp.setTextWrap(false);
 
@@ -475,13 +474,34 @@ void drawOBD(Adafruit_SSD1306 &refDisp, uint8_t sensor) {
   
   refDisp.drawBitmap(95, 38, Sensors[sensor].senseglyphs, 32, 32, WHITE); //draw the sensor icon
   
-  display_item(40, 60, units(sensor), 1, refDisp);
+  xposition = 64-(((units(sensor).length())*16)/2);
+  
+  display_item(xposition, 60, units(sensor), 1, refDisp);
   
   refDisp.setFont(&FreeSansBoldOblique24pt7b);
   
-  display_item(10, 34, valIfnoErr(sensor), 1, refDisp); // draw the value
+  xposition = 64-(((lenVal(sensor))*28)/2);
+  
+  display_item(xposition, 34, String(Sensors[sensor].sensevals), 1, refDisp); // draw the value
 
   refDisp.setFont(); //reset to basic font
+}
+
+int lenVal(uint8_t sensor) {
+	
+	uint8_t length=0;
+	if (Sensors[sensor].sensevals > 9999) {
+		length=5;
+	} else if (Sensors[sensor].sensevals > 999) {
+		length=4;
+	} else if (Sensors[sensor].sensevals > 99) {
+		length=3;
+	} else if (Sensors[sensor].sensevals > 9) {
+		length=2;
+	} else {
+		length=1;
+	}
+	return(length);
 }
 
 void drawBarGraph(Adafruit_SSD1306 &refDisp, uint8_t sensor) {
@@ -750,9 +770,7 @@ int readBoost(uint8_t sensor, uint8_t index) {
 }
 
 int readMAX(uint8_t index) {
-  // Make sure you remove the delay(250) from the adafruit_MAX31856 readThermocoupleTemperature() - otherwise the screen rotation and refresh slows down to approx every 500ms
   int t = int(ReadTemperature(MAX_CS));
-  //t = max.readThermocoupleTemperature();
   // process any faults
   return (doFaults(readFault(MAX_CS), 0, t, index));
 }
