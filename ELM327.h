@@ -20,20 +20,11 @@
 #define ELM327_h
 #include "Arduino.h"
 
-#ifndef ELM_TIMEOUT
-#warning "ELM_TIMEOUT must be defined."
 #define ELM_TIMEOUT 1000
-#endif
 
-#ifndef ELM_BAUD_RATE
-#warning "ELM_BAUD_RATE must be defined"
 #define ELM_BAUD_RATE 9600
-#endif
 
-#ifndef ELM_PORT
-#warning "ELM_PORT is not defined, using default value"
 #define ELM_PORT Serial3
-#endif
 
 #define ELM_SUCCESS 0
 
@@ -61,6 +52,7 @@ class Elm327
     byte getVoltage(float &voltage);
     byte engineLoad(byte &load);
 
+	void echoOff();
 
     /**
        Gets the Coolant Temperature.  Reads PID 05 from the OBD interface and sets

@@ -1,3 +1,15 @@
+Version 0.99
+Functions renamed
+Main loop altered to update certain sensors readings based on frequency of change, this speeds up the main loop when OBD is enabled.
+Added left & right rotations
+Changed some of the pinouts
+Fixed bug where display rotation broke if there were less sensors active than screens.
+Fixed draw position of sensor images in drawbig
+Added pressure sensor code
+
+Version 0.98
+Various bugfixes
+
 Version 0.97
 OBD Support added - at this stage it is using a modified version of -> https://github.com/irvined1982/arduino-ELM327  Main changes are to filter out all non alpha chars & the ELM prompt '>' to allow interfacing with obdsim running on a windows xp virtual machine in virtualbox via a bluetooth com port.
 Large font OBD sensor drawing fucntion added for RPM, MPH

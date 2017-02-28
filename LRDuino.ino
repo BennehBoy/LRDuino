@@ -1,5 +1,5 @@
 // LRDuino by Ben Anderson
-// Version 0.96  (STM32 Only)
+// Version 0.99  (STM32 Only)
 
 #include <Adafruit_SSD1306.h>
 #include "LRDuinoGFX.h"
@@ -9,38 +9,52 @@
 #include <Adafruit_ADXL345_U.h>
 #include <Adafruit_HMC5883_U.h>
 
-#define ELM_TIMEOUT 1000
-#define ELM_BAUD_RATE 9600
-#define ELM_PORT Serial3
-
 #include "ELM327.h"
 
-// Following pinout details are for Maple Mini
-#define OLED_RESET  12
-#define OLED_DC     13  //14 //DC
-// 15 is I2C SDA (for ADXL)
-// 16 is I2C SCL
-#define OLED_CLK    6  // SPI_SCK
-#define OLED_MOSI   4  // SPI_MOSI
-#define OLED_CS     18
-#define OLED_CS_2   19
-#define OLED_CS_3   20
-#define OLED_CS_4   22
-#define OLED_CS_5   25
-#define OLED_CS_6   26
-#define OLED_CS_7   27
-#define OLED_CS_8   28
-#define MAX_CS      29
-#define MAX_MISO    5 // SPI MISO
-#define ROTBUT      21 // our input button
-#define A0          11 // boost
-#define A1          10 // tbox temp
-#define A2          9  // Oil pressure
-#define A3          8  // Oil Temp
-#define A4          7  // Coolant Level
-#define PIEZO       3
+#define NUM_DISPLAYS 8
+
+#define INTERVAL 250
+#define OBDFAST	480
+#define OBDSLOW	970
+#define BUT_DELAY 5
 
 #define DIVISOR     4095
+
+// Following pinout details are for Maple Mini
+// 1 - TX for Bluetooth
+// 2 - RX for Bluetooth
+#define PIEZO       3 // PWM for piezo
+// HW SPI
+#define OLED_MOSI   4  // SPI_MOSI
+#define MAX_MISO    5 // SPI MISO
+#define OLED_CLK    6  // SPI_SCK
+// Analogue inputs
+#define A4          7  // Coolant Level
+#define A3          8  // Oil Temp
+#define A2          9  // Oil pressure
+#define A1          10 // tbox temp
+#define A0          11 // boost
+// SPI stuff
+#define MAX_CS      14 //29
+// 15 is I2C SDA
+// 16 is I2C SCL
+#define OLED_CS     17 //18
+#define OLED_CS_2   18 //19
+#define OLED_CS_3   19 //20
+#define OLED_CS_4   20 //21 //22
+#define OLED_CS_5   21 //22 //25
+#define OLED_CS_6   22 //25 //26
+// 23 is USB
+// 24 is USB
+#define OLED_CS_7   25 //26 //27
+#define OLED_CS_8   26 //27 //28
+#define OLED_RESET  27 //12
+#define OLED_DC     28 //13  //14 //DC
+// user input
+#define LEFTBUT		29
+#define RIGHTBUT	30
+#define SELBUT      31 // 21 // our input button
+
 
 // MAX31856 registers
 #define NumRegisters 10
@@ -48,7 +62,6 @@ byte RegisterValues[] =    {0x90,  0x03,   0xFC,   0x7F,   0xC0,   0x07,     0xF
 String RegisterNames[] =   {"CR0", "CR1", "MASK", "CJHF", "CHLF", "LTHFTH", "LTHFTL", "LTLFTH", "LTLFTL", "CJTO"};
 byte RegisterAddresses[] = {0x00,  0x01,   0x02,   0x03,   0x04,   0x04,     0x06,     0x07,     0x08,     0x09 };
 
-byte status;
 Elm327 Elm;
 
 Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
@@ -88,7 +101,7 @@ typedef struct
 } SingleSensor;
 
 SingleSensor Sensors[20] = {
-  //active   master slaveID warnstatus    sensefault senseglyphs sensevals  units maxvals minvals peakvals warnhivals warnlovals
+ //active  master slaveID warnstatus    sensefault senseglyphs sensevals  units maxvals minvals peakvals warnhivals warnlovals
   {true,   true,  99,     false,        0,         trbBMP,     0,         1,    32,     0,      0,       29,        -999}, // Boost
   {true,   true,  99,     false,        0,         tboxBMP,    0,         0,    150,    -40,    -40,     140,       -999}, // Transfer Box Temp
   {true,   true,  99,     false,        0,         egtBMP,     0,         0,    900,    -40,    -40,     750,       -999}, // EGT
@@ -100,9 +113,9 @@ SingleSensor Sensors[20] = {
   {true,   true,  99,     false,        0,         compass,    0,         3,    360,    0,      0,       999,       -999}, // Magnetometer
   {true,   true,  99,     false,        0,         Gauge,      750,       4,    4500,   0,      0,       4500,      600},  // RPM
   {true,   true,  99,     false,        0,         Gauge,      0,         5,    100,    -30,    0,       100,       -30},  // Roadspeed
-  {false,  true,  99,     false,        0,         OBDII,      0,         1,    60,     0,      0,       45,        -45},  // DUMMY
-  {false,  true,  99,     false,        0,         OBDII,      0,         1,    60,     0,      0,       45,        -45},  // DUMMY
-  {false,  true,  99,     false,        0,         OBDII,      0,         1,    60,     0,      0,       45,        -45},  // DUMMY
+  {false,   true,  99,     false,        0,         OBDII,      0,         1,    32,     0,      0,       29,        -999},  // MAP
+  {true,   true,  99,     false,        0,         OBDII,      0,         6,    800,    0,      0,       999,       -999},  // MAF
+  {true,   true,  99,     false,        0,         OBDII,      0,         0,    130,    -30,    0,       100,       -999},  // Coolant
   {false,  true,  99,     false,        0,         OBDII,      0,         1,    60,     0,      0,       45,        -45},  // DUMMY
   {false,  true,  99,     false,        0,         OBDII,      0,         1,    60,     0,      0,       45,        -45},  // DUMMY
   {false,  true,  99,     false,        0,         OBDII,      0,         1,    60,     0,      0,       45,        -45},  // DUMMY
@@ -112,21 +125,27 @@ SingleSensor Sensors[20] = {
 };
 
 uint8_t sensecount = 0;
-const uint8_t totalsensors = 20; //this is the actual number of definitons above
+const uint8_t totalsensors = 20; //this is the actual number of definitions above
 uint8_t rotation = 0; // incremented by 1 with each button press - it's used to tell the drawdisplay functions which sensor data they should output.
 
 // the follow variable is a long because the time, measured in miliseconds,
 // will quickly become a bigger number than can be stored in an int.
-long previousMillis = 0;        // will store last time the displays were updated
-uint8_t interval = 250;         // interval at which to update displays(milliseconds)
+unsigned long previousMillis = 0;        // will store last time the displays were updated
+unsigned long OBDslowMillis = 0;
+unsigned long OBDfastMillis = 0;
 //int atmos = 215;                //somewhere to store our startup atmospheric pressure - unused at present
 
 void setup()   {
   //start serial connection
   Serial.begin(9600);  //uncomment to send serial debug info
+
   // HC05 init
-  delay(1000);
-  Elm.begin();
+  delay(500);
+  if(Elm.begin() != ELM_SUCCESS) {
+ 	for (uint8_t i=9; i < 20; i++) {
+		Sensors[i].senseactive = false;
+	} 
+  }
 
   // Pin setup
   pinMode (OLED_CS, OUTPUT);
@@ -148,7 +167,7 @@ void setup()   {
   pinMode (MAX_CS, OUTPUT);
   digitalWrite(MAX_CS, HIGH);
 
-  InitializeChannel(MAX_CS); // Init the MAX31856
+  MAXInitializeChannel(MAX_CS); // Init the MAX31856 
 
   display1.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, true); //construct our displays
   display2.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, false);
@@ -178,20 +197,28 @@ void setup()   {
   display8.display();
 
   //configure pin8 as an input and enable the internal pull-up resistor, this is for a button to control the rotation of sensors around the screen
-  pinMode(ROTBUT, INPUT_PULLUP);
+  pinMode(SELBUT, INPUT_PULLUP);
+  pinMode(LEFTBUT, INPUT_PULLUP);
+  pinMode(RIGHTBUT, INPUT_PULLUP);  
 
-  accel.begin(); //initialise ADXL345
-  mag.begin();
+  if(!accel.begin()) { //initialise ADXL345
+ 	Sensors[6].senseactive = false;
+	Sensors[7].senseactive = false;
+  }
+
+  long magTime=millis();
+  !mag.begin();
+  if (millis()-magTime > 1000) { //if more than 1000 ms went by then there was an i2c timeout (doing this here rather than editing the crappy library)
+ 	Sensors[8].senseactive = false; 
+  }
 
   // read our boost sensor rawADC value since at this point it should be atmospheric pressure...
   //atmos = readBoost(0,0);  // not actually used at this point so could be rmeoved
 
   // count the number of active sensors
-  // first we need to dimension the array
   for (uint8_t thisSensor = 0; thisSensor < totalsensors; thisSensor++) {
     if (Sensors[thisSensor].senseactive == true && Sensors[thisSensor].master == true) { // don't count slaves
       sensecount++;
-
     }
   }
 
@@ -206,17 +233,50 @@ void loop() {
   unsigned long currentMillis = millis(); //store the time
 
   // USER INTERACTION
-  bool butVal = digitalRead(ROTBUT); // read the button state
-  if (butVal == LOW) { //  && currentMillis - previousMillis > interval
-    rotation = rotation + 1; // rotate the screens if the button was pressed
-    previousMillis = previousMillis - (interval + 1); // force an update of the screens.
-    if (rotation == sensecount) { // this should be total number of sensors in the main sensor array
-      rotation = 0;
+  bool butLeftVal = digitalRead(LEFTBUT); // read the button state
+  bool butRightVal = digitalRead(RIGHTBUT); // read the button state
+  
+  // left rotation requested
+  if (butLeftVal == LOW) { 
+    
+	if (currentMillis - previousMillis > BUT_DELAY) {
+	
+		rotation = rotation + 1; // rotate the screens if the button was pressed
+		previousMillis = previousMillis - (INTERVAL + 1); // force an update of the screens.
+		
+		if (sensecount < NUM_DISPLAYS) {
+			if (rotation == NUM_DISPLAYS) { // if we have less than 8 sensors, keep rotating until we hit the screen count
+				rotation = 0;
+			}
+		} else {
+			if (rotation == sensecount) { // otherwise rotate until we hit the last sensor
+				rotation = 0;
+			}
+		}
     }
-    delay(10);
   }
-
-  if (currentMillis - previousMillis > interval) { // only read the sensors and draw the screen if 250 millis have passed
+  
+  // right rotation requested
+  if (butRightVal == LOW) { 
+    
+	if (currentMillis - previousMillis > BUT_DELAY) {
+	
+		rotation = rotation - 1; // rotate the screens if the button was pressed
+		previousMillis = previousMillis - (INTERVAL + 1); // force an update of the screens.
+		
+		if (sensecount < NUM_DISPLAYS) {
+			if (rotation == 0) { // if we have less than 8 sensors, keep rotating until we hit the screen count
+				rotation = NUM_DISPLAYS;
+			}
+		} else {
+			if (rotation == 0) { // otherwise rotate until we hit the last sensor
+				rotation = sensecount;
+			}
+		}
+    }
+  }
+  
+  if (currentMillis - previousMillis > INTERVAL) { // only read the sensors and draw the screen if 250 millis have passed
     // save the last time we updated
     previousMillis = currentMillis;
 
@@ -224,38 +284,38 @@ void loop() {
 
     if (Sensors[0].senseactive) {
       Sensors[0].sensevals = readBoost(A0, 0); // read boost off A0 and store at index 0
-      updatePEAK(0); // TURBO
+      processPeak(0); // TURBO
       audibleWARN(0);
     }
 
     if (Sensors[1].senseactive) {
       Sensors[1].sensevals = readERR2081(A1, 1); // read A1, currently the Gearbox oil temp sensor
-      updatePEAK(1); // TBOX OIL TEMP
+      processPeak(1); // TBOX OIL TEMP
       audibleWARN(1);
     }
 
     if (Sensors[2].senseactive) {
       Sensors[2].sensevals = readMAX(2); //read EGT from the Max31856
-      updatePEAK(2); // EGT
+      processPeak(2); // EGT
       audibleWARN(2);
     }
 
     if (Sensors[3].senseactive) {
       Sensors[3].sensevals = readPress(A2, 3); // placeholder at the moment but should be very similar to the boost reading if a cheap pressure sensor is used (ie one which returns a linear voltage 0-5v based on presure)
-      updatePEAK(3); // OIL PRESSURE
+      processPeak(3); // OIL PRESSURE
       audibleWARN(3);
     }
 
     if (Sensors[4].senseactive) {
       Sensors[4].sensevals = readERR2081(A3, 4); // read A7, store at index 4 currently the Engine oil temp sensor
-      updatePEAK(4); // OIL TEMP
+      processPeak(4); // OIL TEMP
       audibleWARN(4);
     }
 
     if (Sensors[5].senseactive) {
       Sensors[5].sensevals = readCoolantLevel(A4, 5); // read A6, to check if coolant level is low
       audibleWARN(5);
-      //updatePEAK(5); // Coolant Level - no need to set a max as this is boolean
+      //processPeak(5); // Coolant Level - no need to set a max as this is boolean
     }
 
     if (Sensors[6].senseactive) {
@@ -273,31 +333,18 @@ void loop() {
       // no audible warning for compass heading
     }
 
-    if (Sensors[9].senseactive) {
+     if (Sensors[9].senseactive) {
       int intRPM = 0;
       int status;
       status = Elm.engineRPM(intRPM);
       Sensors[9].sensevals = intRPM;
 
       if (status != ELM_SUCCESS) {
-        Serial.print("ERROR: ");
-        Serial.println(status);
+        // do something
       }
     }
-
-    if (Sensors[10].senseactive) {
-      byte intMPH = 0;
-      int status;
-      status = Elm.vehicleSpeed(intMPH);
-      Sensors[10].sensevals = int(intMPH);
-
-      if (status != ELM_SUCCESS) {
-        Serial.print("ERROR: ");
-        Serial.println(status);
-      }
-    }
-
-    // DRAW DISPLAYS
+  
+      // DRAW DISPLAYS
     drawDISPLAY(display1, 1);
     drawDISPLAY(display2, 2);
     drawDISPLAY(display3, 3);
@@ -306,8 +353,66 @@ void loop() {
     drawDISPLAY(display6, 7);
     drawDISPLAY(display7, 6);
     drawDISPLAY(display8, 5);
+  
   }
-}
+  
+	// 500 millis interval
+ 	if (currentMillis - OBDfastMillis > OBDFAST) { // only read the sensors and draw the screen if 250 millis have passed
+		// save the last time we updated
+		OBDfastMillis = currentMillis;
+		
+ 		if (Sensors[11].senseactive) {
+			byte intMAP = 0;
+			int status;
+			status = Elm.intakeManifoldAbsolutePressure(intMAP);
+			Sensors[11].sensevals = int(intMAP);
+
+			if (status != ELM_SUCCESS) {
+				// do something
+			}
+		}
+		
+	 	if (Sensors[12].senseactive) {
+			unsigned int intMAF = 0;
+			int status;
+			status = Elm.MAFAirFlowRate(intMAF);
+			Sensors[12].sensevals = int(intMAF);
+
+			if (status != ELM_SUCCESS) {
+				// do something
+			}
+		}
+	}
+
+	// 1000 Millis interval
+	if (currentMillis - OBDslowMillis > OBDSLOW) { // only read the sensors and draw the screen if 250 millis have passed
+		// save the last time we updated
+		OBDslowMillis = currentMillis;
+ 		if (Sensors[13].senseactive) {
+			int intECT = 0;
+			int status;
+			status = Elm.coolantTemperature(intECT);
+			Sensors[13].sensevals = intECT;
+
+			if (status != ELM_SUCCESS) {
+				// do something
+			}
+		}
+		
+		if (Sensors[10].senseactive) {
+			byte intMPH = 0;
+			int status;
+			status = Elm.vehicleSpeed(intMPH);
+			Sensors[10].sensevals = int(intMPH);
+
+			if (status != ELM_SUCCESS) {
+				// do something
+			}
+		}
+	}
+
+  }
+
 
 // 4 screens - use index values like this to rotate around the displays
 // 1 2
@@ -323,19 +428,22 @@ void loop() {
 
 void drawDISPLAY(Adafruit_SSD1306 &refDisp, uint8_t index) { // DISPLAY 1 is our Main guage display
 
-  uint8_t sensor0 = posrot(index);
-
-  if (sensor0 == 8) { // draw compass
+  int8_t sensor0 = processRotation(index);
+  
+  if (sensor0 == -1) {
+  // don't draw anything because there are less sensors than displays
+	Serial.println("blank screen");
+  } else if (sensor0 == 8) { // draw compass
     drawCompass(32, 32, 30, refDisp, sensor0);
     drawSensor(15, 20, refDisp, sensor0, false);
   } else if (Sensors[sensor0].slaveID != 99) { // draw paired sensors
     drawSensor(0, 0, refDisp, sensor0, true);
     drawSensor(33, 0, refDisp, Sensors[sensor0].slaveID, true);
-  } else if ((sensor0 == 9) || (sensor0 == 10)) {
-    drawOBD(refDisp, sensor0);
-  } else {
+  } else if ((sensor0 == 20)) {
     drawSensor(0, 0, refDisp, sensor0, true); // draw all other sensors with a standard bargraph
     drawBarGraph(refDisp, sensor0);
+  } else {
+	drawBIG(refDisp, sensor0);  
   }
 
 refDisp.display();
@@ -353,17 +461,13 @@ void drawSensor(uint8_t y, uint8_t x, Adafruit_SSD1306 &refDisp, uint8_t sensor,
   refDisp.setTextWrap(false);
 
   refDisp.setFont(&FreeSansBoldOblique12pt7b); //switch to a nice ttf font 12x7
-  display_item(46 + x, y + 9 + 15, valIfnoErr(sensor), 1, refDisp); // x should only be given a value if we are not showing icons (eg for the compass display)
+  drawItem(46 + x, y + 9 + 15, getValIfNoErr(sensor), 1, refDisp); // x should only be given a value if we are not showing icons (eg for the compass display)
 
-  temp = valIfnoErr(sensor);
+  temp = getValIfNoErr(sensor);
   xoffset = (temp.length() * 13) + 5 ; // work out width of the characters so we can move the cursor to the correct position to display our units symbol
 
-  if (Sensors[sensor].sensefault > 0 || sensor == 5) { // normal size text if it's an error message or it's our low coolant warning sensor
-    display_item(46 + x + xoffset, y + 9 + 15, units(sensor), 1, refDisp);
-  }  else {
-    refDisp.setFont(); // switch to small standard font
-    display_item(46 + x + xoffset, y + 9, units(sensor), 1, refDisp);
-  }
+  refDisp.setFont(); // switch to small standard font
+  drawItem(46 + x + xoffset, y + 9, getUnits(sensor), 1, refDisp);
 
   if (sensor == 6) { // INCLINOMETER ONLY (ANIMATED)
     rolltemp = Sensors[sensor].sensevals;
@@ -456,52 +560,44 @@ void drawSensor(uint8_t y, uint8_t x, Adafruit_SSD1306 &refDisp, uint8_t sensor,
     }
   }
   // DO sensor visual warnings
-  if (hiloWARN(sensor, true) && icons) {
+  if (processHiLo(sensor, true) && icons) {
     refDisp.drawBitmap(100, y + 4, triBMP, 24, 24, WHITE); //outut the warning triangle
   }
-  if (faultWARN(sensor) == 1 && icons) {
+  if (processFaultIfSet(sensor) == 1 && icons) {
     refDisp.drawBitmap(100, y + 4, NoConn, 24, 24, WHITE); //output the disconnected sensor icon
   }
   refDisp.setFont(); //reset to basic font
 }
 
-void drawOBD(Adafruit_SSD1306 &refDisp, uint8_t sensor) {
+void drawBIG(Adafruit_SSD1306 &refDisp, uint8_t sensor) {
   int xposition = 0;
 
   refDisp.setTextWrap(false);
 
   refDisp.setFont(&FreeSansBoldOblique12pt7b); //switch to a nice ttf font 12x7
   
-  refDisp.drawBitmap(95, 38, Sensors[sensor].senseglyphs, 32, 32, WHITE); //draw the sensor icon
+  refDisp.drawBitmap(95, 34, Sensors[sensor].senseglyphs, 32, 32, WHITE); //draw the sensor icon
   
-  xposition = 64-(((units(sensor).length())*16)/2);
+  xposition = 64-(((getUnits(sensor).length())*16)/2);  // work out our drawing location
   
-  display_item(xposition, 60, units(sensor), 1, refDisp);
+  drawItem(xposition, 60, getUnits(sensor), 1, refDisp); // and draw the units
   
-  refDisp.setFont(&FreeSansBoldOblique24pt7b);
+  refDisp.setFont(&FreeSansBoldOblique24pt7b); // change to large font
   
-  xposition = 64-(((lenVal(sensor))*28)/2);
+  xposition = 64-(((getValIfNoErr(sensor).length())*28)/2); // work out the drawing location
   
-  display_item(xposition, 34, String(Sensors[sensor].sensevals), 1, refDisp); // draw the value
+  drawItem(xposition, 34, getValIfNoErr(sensor), 1, refDisp); // draw the value
 
   refDisp.setFont(); //reset to basic font
-}
-
-int lenVal(uint8_t sensor) {
-	
-	uint8_t length=0;
-	if (Sensors[sensor].sensevals > 9999) {
-		length=5;
-	} else if (Sensors[sensor].sensevals > 999) {
-		length=4;
-	} else if (Sensors[sensor].sensevals > 99) {
-		length=3;
-	} else if (Sensors[sensor].sensevals > 9) {
-		length=2;
-	} else {
-		length=1;
-	}
-	return(length);
+  
+  if (processHiLo(sensor, true)) {
+    refDisp.drawBitmap(0, 38, triBMP, 24, 24, WHITE); //outut the warning triangle
+  }
+  if (processFaultIfSet(sensor) == 1) {
+    refDisp.drawBitmap(0, 38, NoConn, 24, 24, WHITE); //output the disconnected sensor icon
+  }
+  
+  
 }
 
 void drawBarGraph(Adafruit_SSD1306 &refDisp, uint8_t sensor) {
@@ -527,8 +623,8 @@ void drawBarGraph(Adafruit_SSD1306 &refDisp, uint8_t sensor) {
   } else {
     padding = -4;
   }
-  display_item(8 + padding + (100 / scalerange * (Sensors[sensor].sensepeakvals + scaleposmin)), 33, String(Sensors[sensor].sensepeakvals), 1, refDisp); // set cursor with padding & write the peak val
-  display_item(8, 57, String(Sensors[sensor].senseminvals), 1, refDisp); // draw the minumum value
+  drawItem(8 + padding + (100 / scalerange * (Sensors[sensor].sensepeakvals + scaleposmin)), 33, String(Sensors[sensor].sensepeakvals), 1, refDisp); // set cursor with padding & write the peak val
+  drawItem(8, 57, String(Sensors[sensor].senseminvals), 1, refDisp); // draw the minumum value
   refDisp.setCursor(58, 57);
   if (Sensors[sensor].senseminvals < 100) { // adjust padding for the low value so it looks nice
     padding = 8;
@@ -541,10 +637,10 @@ void drawBarGraph(Adafruit_SSD1306 &refDisp, uint8_t sensor) {
   } else {
     padding = 5;
   }
-  display_item(100 + padding, 57, String(Sensors[sensor].sensemaxvals), 1, refDisp);
+  drawItem(100 + padding, 57, String(Sensors[sensor].sensemaxvals), 1, refDisp);
 }
 
-void display_item(int x, int y, String token, int txt_size, Adafruit_SSD1306 &refDisp) {
+void drawItem(int x, int y, String token, int txt_size, Adafruit_SSD1306 &refDisp) {
   refDisp.setCursor(x, y);
   refDisp.setTextColor(WHITE);
   refDisp.setTextSize(txt_size);
@@ -552,7 +648,7 @@ void display_item(int x, int y, String token, int txt_size, Adafruit_SSD1306 &re
   refDisp.setTextSize(1); // Back to default text size
 }
 
-void arrow(int x2, int y2, int x1, int y1, int alength, int awidth, int colour, Adafruit_SSD1306 &refDisp) {
+void drawArrow(int x2, int y2, int x1, int y1, int alength, int awidth, int colour, Adafruit_SSD1306 &refDisp) {
   float distance;
   int dx, dy, x2o, y2o, x3, y3, x4, y4, k;
   distance = sqrt(pow((x1 - x2), 2) + pow((y1 - y2), 2));
@@ -582,17 +678,17 @@ void drawCompass(uint8_t centreX, uint8_t centreY, uint8_t radius, Adafruit_SSD1
     dyi = dyo * 0.95;
     refDisp.drawLine(dxi + centreX, dyi + centreY, dxo + centreX, dyo + centreY, WHITE);
   }
-  display_item((centreX - 2), (centreY - 24), "N", 1, refDisp);
-  display_item((centreX - 2), (centreY + 17), "S", 1, refDisp);
-  display_item((centreX + 19), (centreY - 3), "E", 1, refDisp);
-  display_item((centreX - 23), (centreY - 3), "W", 1, refDisp);
+  drawItem((centreX - 2), (centreY - 24), "N", 1, refDisp);
+  drawItem((centreX - 2), (centreY + 17), "S", 1, refDisp);
+  drawItem((centreX + 19), (centreY - 3), "E", 1, refDisp);
+  drawItem((centreX - 23), (centreY - 3), "W", 1, refDisp);
 
   dx = (0.7 * radius * cos((Sensors[sensor].sensevals - 90) * 3.14 / 180)) + centreX; // calculate X position for the screen coordinates - can be confusing!
   dy = (0.7 * radius * sin((Sensors[sensor].sensevals - 90) * 3.14 / 180)) + centreY;
-  arrow(dx, dy, centreX, centreY, 2, 2, WHITE, refDisp);
+  drawArrow(dx, dy, centreX, centreY, 2, 2, WHITE, refDisp);
 }
 
-bool hiloWARN(uint8_t sensor, bool toggle) {
+bool processHiLo(uint8_t sensor, bool toggle) {
   // this function toggles a an error flag if the current sensor is above it's high warning parameter or below it's low warning paramater - since the display is redrawn every 250ms it appears to flash
   if (Sensors[sensor].sensefault > 0 && sensor != 5) { // we don't want to display a high or low warning if there's a sensor fault (ie wiring issue etc).
     return (false);
@@ -620,14 +716,14 @@ bool hiloWARN(uint8_t sensor, bool toggle) {
 
 void audibleWARN(uint8_t sensor) {
   // sound the buzzer if their's a warning condition
-  if (hiloWARN(sensor, false)) {
+  if (processHiLo(sensor, false)) {
     if (PIEZO > 0) {
       tone(PIEZO, 2000, 200);
     }
   }
 }
 
-uint8_t faultWARN(uint8_t sensor) {
+uint8_t processFaultIfSet(uint8_t sensor) {
   // this function alternates a flag between 1 & 2 if it is set - since the display is redrawn every 250ms it appears to flash
   if (Sensors[sensor].sensefault > 0) {
     if (Sensors[sensor].sensefault == 1) {
@@ -639,8 +735,8 @@ uint8_t faultWARN(uint8_t sensor) {
   return (Sensors[sensor].sensefault);
 }
 
-void toggleFault(uint8_t sensor) {
-  // toggles the fault strate of a sensor (to make our warning symbols flash)
+void processFault(uint8_t sensor) {
+  // toggles the fault state of a sensor (to make our fault symbols flash)
   if (Sensors[sensor].sensefault == 2) {
     Sensors[sensor].sensefault = 2; // 2 is animation off
   } else {
@@ -648,7 +744,7 @@ void toggleFault(uint8_t sensor) {
   }
 }
 
-void updatePEAK(uint8_t sensor) {
+void processPeak(uint8_t sensor) {
   // stores the current value of a sensor if it is above the previously stored high value
   if (Sensors[sensor].sensevals >= Sensors[sensor].senseminvals) { // only do this if the value is above the min
     if (Sensors[sensor].sensevals <= Sensors[sensor].sensemaxvals) { // only do this if the value is below the max
@@ -659,49 +755,49 @@ void updatePEAK(uint8_t sensor) {
   }
 }
 
-String units(uint8_t sensor) { // returns the units associated with the sensor, or some fault text
-  // if a fault is set return ERR
-  if (Sensors[sensor].sensefault > 0 && sensor != 5) {
-    return (F("Er"));
-  }
-  // if no fault then return the correct units (saves us some memory usage)
-
+String getUnits(uint8_t sensor) { // returns the units associated with the sensor
   switch (Sensors[sensor].senseunits) {
     case 0:
-      return (F("C"));
+      return ("C");
     case 1:
-      return (F("psi"));
+      return ("psi");
     case 2:
-      if (Sensors[sensor].sensefault > 0) {
-        return (F("Low"));
-      }
-      return (F("OK"));
+      return ("lvl");
     case 3:
-      return (F("o"));
+      return ("o");
     case 4:
-      return (F("rpm"));
+      return ("rpm");
     case 5:
-      return (F("mph"));
+      return ("mph");
+	case 6:
+	  return ("g/m");
+	  
   }
 }
 
-String valIfnoErr(uint8_t sensor) { //prevents values being displayed if we are in fault state OR this is a boolean sensor (coolant level)
+String getValIfNoErr(uint8_t sensor) { //prevents values being displayed if we are in fault state OR this is a boolean sensor (coolant level)
   String text = String(Sensors[sensor].sensevals);
   // if a fault is set return an empty string
 
-  if (sensor == 5) {
-    return (F(""));
+  if (sensor == 5 && Sensors[sensor].sensefault == 0) {
+    return ("ok");
   }
-  if (Sensors[sensor].sensefault > 0 || sensor == 5) {
-    return (F(""));
+  if (Sensors[sensor].sensefault > 0) {
+    return ("Err");
   }
   return (text);
 }
 
-uint8_t posrot(uint8_t location) { // this is used to shift our array of data around the screens
+int8_t processRotation(uint8_t location) { // this is used to shift our array of data around the screens
   uint8_t count = 0;
-  uint8_t pos[sensecount];
-
+  uint8_t dimension =0;
+  if (sensecount < NUM_DISPLAYS) {
+	dimension=NUM_DISPLAYS;
+  } else {
+	  dimension=sensecount;
+  }
+	int8_t pos[dimension];
+  
   // now we populate the array with the active sensors
   for (uint8_t locthisSensor = 0; locthisSensor < totalsensors; locthisSensor++) {
     if (Sensors[locthisSensor].senseactive == true && Sensors[locthisSensor].master == true) {
@@ -709,19 +805,26 @@ uint8_t posrot(uint8_t location) { // this is used to shift our array of data ar
       count++;
     }
   }
-  // uint8_t pos[] = {0, 1, 2, 3, 4, 5, 6};
-  // return the correct sensor for the current location
+  
+  // if there are less sensors than screens then we need to insert some -1 values so that an empty screen is drawn
+  if (sensecount < NUM_DISPLAYS) {
+	for(uint8_t emptyScreens = NUM_DISPLAYS-1; emptyScreens > count-1; emptyScreens--) {
+		pos[emptyScreens] = -1;
+	}
+	count=NUM_DISPLAYS;
+  }
+  
+  // return the correct sensor for the current location (or -1 to display nothing)
   location = location - 1 + rotation;
-
   if (location > count - 1) {
     location = location % count;
   }
   return (pos[location]);
 }
 
-int doFaults(int constraint, int checkval, int retval, uint8_t index) { //
+int processConstraints(int constraint, int checkval, int retval, uint8_t index) { //
   if (checkval < constraint) {
-    toggleFault(index); //fault!
+    processFault(index); //fault!
     Sensors[index].sensepeakvals = Sensors[index].senseminvals; //set the peak value to minimum (tidies the display)
     retval = Sensors[index].senseminvals; //return minimum value
   } else {
@@ -754,7 +857,7 @@ int readERR2081(uint8_t sensor, uint8_t index) {
 
   // FAULT checking
   // Sensors should be connected with a 1K pulldown resistor - if there's is a connection fault a low raw read will indicate this.
-  return (doFaults(DIVISOR / 100, raw, int(steinhart), index));
+  return (processConstraints(DIVISOR / 100, raw, int(steinhart), index));
 }
 
 
@@ -762,25 +865,37 @@ int readBoost(uint8_t sensor, uint8_t index) {
   int rawval;
   float kpaval;
   float boost;
+  //mV per mB = 2640mv/6894.76mb  = 0.3828  (this is for 3.3v STM32)
+  //mv per ADC = 3300mv/4095 = 0.80586
+  //mb per ADC = 2.1052
   rawval = analogRead(sensor);       // Read MAP sensor raw value on analog port 0
   kpaval = rawval * 0.4878;             // convert to kpa
   boost = kpaval * 0.145038 - 14.5038;  // Convert to psi and subtract atmospheric (sensor is absolute pressure)
   // process any faults
-  return (doFaults(DIVISOR / 100, rawval, int(boost), index));
+  return (processConstraints(DIVISOR / 100, rawval, int(boost), index));
 }
 
 int readMAX(uint8_t index) {
-  int t = int(ReadTemperature(MAX_CS));
+  int t = int(MAXReadTemperature(MAX_CS));
   // process any faults
-  return (doFaults(readFault(MAX_CS), 0, t, index));
+  return (processConstraints(MAXreadFault(MAX_CS), 0, t, index));
 }
 
 int readPress(uint8_t sensor, uint8_t index) {
   //just a dummy at present
-  int p;
-  p = analogRead(sensor);
+  int rawval;
+  long kpaval;
+  long oilpress;
+  
+  //mV per mB = 2640mv/6894mb  = 0.383  (this is for 3.3v STM32)
+  //mv per ADC = 3300mv/4096 = 0.8056
+  //mb per ADC = 2.1034
+  rawval = analogRead(sensor);       // Read MAP sensor raw value on analog port 0
+  kpaval = (rawval * 2.1034)/10;             // convert to kpa
+  oilpress = kpaval * 0.145038 - 12.5;  // Convert to psi & subtract atmospheric 12psi (sesnor appears to have ~2.5spi offset from reality)
+  //Serial.println(oilpress);
   // process any faults
-  return (doFaults(DIVISOR / 100, p, p, index));
+  return (processConstraints(DIVISOR / 100, rawval, int(oilpress), index));
 }
 
 bool readCoolantLevel(uint8_t sensor, uint8_t index) {
@@ -789,12 +904,15 @@ bool readCoolantLevel(uint8_t sensor, uint8_t index) {
   int CoolantLevel;
   CoolantLevel = analogRead(sensor);
   // process any faults
-  return ((bool)doFaults(DIVISOR / 2, CoolantLevel, CoolantLevel, index));
+  return ((bool)processConstraints(DIVISOR / 2, CoolantLevel, CoolantLevel, index));
 }
 
-int readADXL(uint8_t index, bool axis) {  // false is Y true is X
+ int readADXL(uint8_t index, bool axis) {  // false is Y true is X
+
   sensors_event_t event;
-  accel.getEvent(&event);
+  if(!accel.getEvent(&event)) {
+	  return(0);
+  }
   double ax, ay, az;
 
   ax = event.acceleration.x;
@@ -817,25 +935,13 @@ int readADXL(uint8_t index, bool axis) {  // false is Y true is X
   return (int(yAngle));
 }
 
-int readHMC5883(uint8_t index)
-{
-  /* Get a new sensor event */
-  sensors_event_t event;
-  mag.getEvent(&event);
-
-  /* Display the results (magnetic vector values are in micro-Tesla (uT)) */
-  //Serial.print("X: "); Serial.print(event.magnetic.x); Serial.print("  ");
-  //Serial.print("Y: "); Serial.print(event.magnetic.y); Serial.print("  ");
-  //Serial.print("Z: "); Serial.print(event.magnetic.z); Serial.print("  ");Serial.println("uT");
-
-  // Hold the module so that Z is pointing 'up' and you can measure the heading with x&y
-  // Calculate heading when the magnetometer is level, then correct for signs of axis.
+ int readHMC5883(uint8_t index) {
+   sensors_event_t event;
+  if(!mag.getEvent(&event)) {
+	  return(0);
+  }
+  
   float heading = atan2(event.magnetic.y, event.magnetic.x);
-
-  // Once you have your heading, you must then add your 'Declination Angle', which is the 'Error' of the magnetic field in your location.
-  // Find yours here: http://www.magnetic-declination.com/
-  // Mine is: -13* 2' W, which is ~13 Degrees, or (which we need) 0.22 radians
-  // If you cannot find your Declination, comment out these two lines, your compass will be slightly off.
   float declinationAngle = 0.025;
   heading += declinationAngle;
 
@@ -849,25 +955,23 @@ int readHMC5883(uint8_t index)
 
   // Convert radians to degrees for readability.
   float headingDegrees = heading * 180 / M_PI;
-
-  //Serial.print("Heading (degrees): "); Serial.println(headingDegrees);
   return (int(headingDegrees));
 }
 
 // MAX31856 SPI CODE
 
 
-void InitializeChannel(int Pin) {
+void MAXInitializeChannel(int Pin) {
   for (int i = 0; i < NumRegisters; i++) {
-    WriteRegister(Pin, i, RegisterValues[i]);
+    MAXWriteRegister(Pin, i, RegisterValues[i]);
   }
 }
 
-uint8_t readFault(int Pin) {
-  return ReadSingleRegister(Pin, 0x0F);
+uint8_t MAXreadFault(int Pin) {
+  return MAXReadSingleRegister(Pin, 0x0F);
 }
 
-byte ReadSingleRegister(int Pin, byte Register) {
+byte MAXReadSingleRegister(int Pin, byte Register) {
   SPI.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE3));
   digitalWrite(Pin, LOW);
   delayMicroseconds(1);
@@ -879,7 +983,7 @@ byte ReadSingleRegister(int Pin, byte Register) {
   return data;
 }
 
-unsigned long ReadMultipleRegisters(int Pin, byte StartRegister, int count) {
+unsigned long MAXReadMultipleRegisters(int Pin, byte StartRegister, int count) {
   //reads up to 4 sequential registers
   SPI.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE3));
   digitalWrite(Pin, LOW);
@@ -895,7 +999,7 @@ unsigned long ReadMultipleRegisters(int Pin, byte StartRegister, int count) {
   return data;
 }
 
-void WriteRegister(int Pin, byte Register, byte Value) {
+void MAXWriteRegister(int Pin, byte Register, byte Value) {
   byte Address = Register | 0x80; //Set bit 7 high for a write command
   SPI.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE3));
   digitalWrite(Pin, LOW);
@@ -907,10 +1011,10 @@ void WriteRegister(int Pin, byte Register, byte Value) {
   SPI.endTransaction();
 }
 
-double ReadTemperature(int Pin) {
+double MAXReadTemperature(int Pin) {
   double temperature;
   long data;
-  data = ReadMultipleRegisters(Pin, 0x0C, 4);
+  data = MAXReadMultipleRegisters(Pin, 0x0C, 4);
   // Strip the unused bits and the Fault Status Register
   data = data >> 13;
   // Negative temperatures have been automagically handled by the shift above :-)

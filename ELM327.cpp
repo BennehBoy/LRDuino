@@ -26,6 +26,11 @@ byte Elm327::begin() {
   return runCommand("AT SP 0", data, 20);
 }
 
+void Elm327::echoOff() {
+  char data[20];
+  runCommand("AT E0", data, 20);
+}
+
 byte Elm327::engineLoad(byte &load) {
   byte status;
   byte values[1];
@@ -576,6 +581,7 @@ byte Elm327::getBytes( const char *mode, const char *chkMode, const char *pid, b
   cmd[2] = ' ';
   cmd[3] = pid[0];
   cmd[4] = pid[1];
+ // cmd[5] = '1';
   cmd[5] = '\0';
 
   status = runCommand(cmd, data, 64);
