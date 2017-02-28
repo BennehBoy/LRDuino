@@ -24,3 +24,15 @@ I would, however, consider it a great courtesy if you could email me and tell me
 # Contribution
 
 Contributions in all forms (including documentation) are welcomed. If you would like to contribute to this project, then just fork it in github and send a pull request.
+
+# References
+
+STM32Duino - http://www.stm32duino.com
+
+Adafruint Graphics Library - https://github.com/adafruit/Adafruit-GFX-Library
+
+ELM327 Library - https://github.com/irvined1982/arduino-ELM327
+
+Custom Max31586 code - https://forum.arduino.cc/index.php?topic=390824.0
+
+Fabo ADXL345 library - https://github.com/FaBoPlatform/FaBo3Axis-ADXL345-Library
