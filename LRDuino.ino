@@ -1,5 +1,5 @@
 // LRDuino by Ben Anderson
-// Version 0.99  (STM32 Only)
+// Version 0.01  (STM32 Only)
 
 #include <Adafruit_SSD1306.h>
 #include "LRDuinoGFX.h"
@@ -8,52 +8,62 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_ADXL345_U.h>
 #include <Adafruit_HMC5883_U.h>
+#include <menu.h>
+#include <menuIO/serialOut.h>
+#include <menuIO/chainStream.h>
+#include <menuIO/adafruitGfxOut.h>
+#include <Buttons.h>
+
+using namespace Menu;
 
 #include "ELM327.h"
 
 #define NUM_DISPLAYS 8
 
 #define INTERVAL 250
-#define OBDFAST	480
-#define OBDSLOW	970
-#define BUT_DELAY 5
-
+#define OBDFAST	400
+#define OBDSLOW	600
+#define BUT_DELAY 100
+#define MAX_DEPTH 2
 #define DIVISOR     4095
 
 // Following pinout details are for Maple Mini
 // 1 - TX for Bluetooth
 // 2 - RX for Bluetooth
-#define PIEZO       3 // PWM for piezo
+#define PIEZO       PB0		//3 // PWM for piezo
 // HW SPI
-#define OLED_MOSI   4  // SPI_MOSI
-#define MAX_MISO    5 // SPI MISO
-#define OLED_CLK    6  // SPI_SCK
+#define OLED_MOSI   PA7		//4 // SPI_MOSI
+#define MAX_MISO    PA6		//5 // SPI MISO
+#define OLED_CLK    PA5		//6 // SPI_SCK
 // Analogue inputs
-#define A4          7  // Coolant Level
-#define A3          8  // Oil Temp
-#define A2          9  // Oil pressure
-#define A1          10 // tbox temp
-#define A0          11 // boost
-// SPI stuff
-#define MAX_CS      14 //29
-// 15 is I2C SDA
-// 16 is I2C SCL
-#define OLED_CS     17 //18
-#define OLED_CS_2   18 //19
-#define OLED_CS_3   19 //20
-#define OLED_CS_4   20 //21 //22
-#define OLED_CS_5   21 //22 //25
-#define OLED_CS_6   22 //25 //26
-// 23 is USB
-// 24 is USB
-#define OLED_CS_7   25 //26 //27
-#define OLED_CS_8   26 //27 //28
-#define OLED_RESET  27 //12
-#define OLED_DC     28 //13  //14 //DC
+#define A4          PA4		//7  // Coolant Level
+#define A3          PA3		//8  // Oil Temp
+#define A2          PA2		//9  // Oil pressure
+#define A1          PA1		//10 // tbox temp
+#define A0          PA0		//11 // boost
 // user input
-#define LEFTBUT		29
-#define RIGHTBUT	30
-#define SELBUT      31 // 21 // our input button
+#define UPBUT		PC15	//12
+#define DOWNBUT		PC14	//13
+// SPI stuff
+#define MAX_CS      PC13	//14
+// PB7 //15 is I2C SDA
+// PB6 //16 is I2C SCL
+#define OLED_CS     PB5		//17
+#define OLED_CS_2   PB4		//18
+#define OLED_CS_3   PB3		//19
+#define OLED_CS_4   PA15	//20
+#define OLED_CS_5   PA14	//21
+#define OLED_CS_6   PA13	//22
+// PA12 - 23 is USB
+// PA11 - 24 is USB
+#define OLED_CS_7   PA10	//25
+#define OLED_CS_8   PA9		//26
+#define OLED_RESET  PA8		//27
+#define OLED_DC     PB15	//28
+// user input
+#define LEFTBUT		PB14	//29
+#define RIGHTBUT	PB13	//30
+#define SELBUT      PB12	//31 
 
 
 // MAX31856 registers
@@ -81,6 +91,13 @@ Adafruit_SSD1306 display8(OLED_DC, OLED_RESET, OLED_CS_8);
 #error("Height incorrect, please fix Adafruit_SSD1306.h!");
 #endif
 
+// Button initialisation
+Button btn_up(UPBUT, LOW);
+Button btn_down(DOWNBUT, LOW);
+Button btn_left(LEFTBUT, LOW);
+Button btn_right(RIGHTBUT, LOW);
+Button btn_enter(SELBUT, LOW);
+
 // This is all the parameters and variables for our sensors
 
 typedef struct
@@ -88,6 +105,7 @@ typedef struct
   bool senseactive;
   bool master;
   uint8_t slaveID;
+  uint8_t senseorder;
   bool warnstatus;
   uint8_t sensefault;
   const unsigned char* senseglyphs;
@@ -98,34 +116,29 @@ typedef struct
   int sensepeakvals;
   const int sensewarnhivals;
   const int sensewarnlowvals;
+  const char sensename[13];
 } SingleSensor;
 
-SingleSensor Sensors[20] = {
- //active  master slaveID warnstatus    sensefault senseglyphs sensevals  units maxvals minvals peakvals warnhivals warnlovals
-  {true,   true,  99,     false,        0,         trbBMP,     0,         1,    32,     0,      0,       29,        -999}, // Boost
-  {true,   true,  99,     false,        0,         tboxBMP,    0,         0,    150,    -40,    -40,     140,       -999}, // Transfer Box Temp
-  {true,   true,  99,     false,        0,         egtBMP,     0,         0,    900,    -40,    -40,     750,       -999}, // EGT
-  {true,   true,  4,      false,        0,         eopBMP,     0,         1,    72,     0,      0,       60,        20},   // Oil Pressure
-  {true,   false, 99,     false,        0,         eotBMP,     0,         0,    150,    -40,    -40,     100,       -999}, // Oil Temp
-  {true,   true,  99,     false,        0,         coollev,    0,         2,    1,      0,      1,       999,       1},    // Coolant Level
-  {true,   true,  7,      false,        0,         D2BMP,      0,         3,    45,     -45,    0,       30,        -30},  // Vehicle Roll
-  {true,   false, 99,     false,        0,         D2BMP,      0,         3,    60,     -60,    0,       45,        -45},  // Vehicle Pitch
-  {true,   true,  99,     false,        0,         compass,    0,         3,    360,    0,      0,       999,       -999}, // Magnetometer
-  {true,   true,  99,     false,        0,         Gauge,      750,       4,    4500,   0,      0,       4500,      600},  // RPM
-  {true,   true,  99,     false,        0,         Gauge,      0,         5,    100,    -30,    0,       100,       -30},  // Roadspeed
-  {false,   true,  99,     false,        0,         OBDII,      0,         1,    32,     0,      0,       29,        -999},  // MAP
-  {true,   true,  99,     false,        0,         OBDII,      0,         6,    800,    0,      0,       999,       -999},  // MAF
-  {true,   true,  99,     false,        0,         OBDII,      0,         0,    130,    -30,    0,       100,       -999},  // Coolant
-  {false,  true,  99,     false,        0,         OBDII,      0,         1,    60,     0,      0,       45,        -45},  // DUMMY
-  {false,  true,  99,     false,        0,         OBDII,      0,         1,    60,     0,      0,       45,        -45},  // DUMMY
-  {false,  true,  99,     false,        0,         OBDII,      0,         1,    60,     0,      0,       45,        -45},  // DUMMY
-  {false,  true,  99,     false,        0,         OBDII,      0,         1,    60,     0,      0,       45,        -45},  // DUMMY
-  {false,  true,  99,     false,        0,         OBDII,      0,         1,    60,     0,      0,       45,        -45},  // DUMMY
-  {false,  true,  99,     false,        0,         OBDII,      0,         1,    60,     0,      0,       45,        -45}   // DUMMY
+SingleSensor Sensors[14] = {
+ //active  master slaveID senseorder	warnstatus    sensefault senseglyphs sensevals  units maxvals minvals peakvals warnhivals warnlovals
+  {true,   true,  99,     0,			false,        0,         trbBMP,     0,         1,    32,     0,      0,       29,        -999,	"Boost"}, 		// Boost
+  {true,   true,  99,     0,			false,        0,         tboxBMP,    0,         0,    150,    -40,    -40,     140,       -999,	"Tbox Temp"}, 	// Transfer Box Temp
+  {true,   true,  99,     0,			false,        0,         egtBMP,     0,         0,    900,    -40,    -40,     750,       -999,	"EGT"}, 		// EGT
+  {true,   true,  4,      0,			false,        0,         eopBMP,     0,         1,    72,     0,      0,       60,        20,	"Oil Pressure"},// Oil Pressure
+  {true,   false, 99,     0,			false,        0,         eotBMP,     0,         0,    150,    -40,    -40,     100,       -999,	"Oil Temp"}, 	// Oil Temp
+  {true,   true,  99,     0,			false,        0,         coollev,    0,         2,    1,      0,      1,       999,       1,	"Coolant Lvl"}, // Coolant Level
+  {true,   true,  7,      0,			false,        0,         D2BMP,      0,         3,    45,     -45,    0,       30,        -30,	"Roll"},  		// Vehicle Roll
+  {true,   false, 99,     0,			false,        0,         D2BMP,      0,         3,    60,     -60,    0,       45,        -45,	"Pitch"},  		// Vehicle Pitch
+  {false,   true,  99,     0,			false,        0,         compass,    0,         3,    360,    0,      0,       999,       -999,	"Compass"}, 	// Magnetometer
+  {true,   true,  99,     0,			false,        0,         Gauge,      750,       4,    4500,   0,      0,       4500,      600,	"RPM (OBD)"},  	// RPM
+  {true,   true,  99,     0,			false,        0,         Gauge,      0,         5,    100,    -30,    0,       100,       -30,	"Speed (OBD)"}, // Roadspeed
+  {false,   true,  99,     0,			false,        0,         OBDII,      0,         1,    32,     0,      0,       29,        -999,	"MAP (OBD)"},  	// MAP
+  {false,   true,  99,     0,			false,        0,         OBDII,      0,         6,    800,    0,      0,       999,       -999,	"MAF (OBD)"},  	// MAF
+  {true,   true,  99,     0,			false,        0,         OBDII,      0,         0,    130,    -30,    0,       100,       -999,	"Coolant Temp"} // Coolant
 };
 
 uint8_t sensecount = 0;
-const uint8_t totalsensors = 20; //this is the actual number of definitions above
+const uint8_t totalsensors = 14; //this is the actual number of definitions above
 uint8_t rotation = 0; // incremented by 1 with each button press - it's used to tell the drawdisplay functions which sensor data they should output.
 
 // the follow variable is a long because the time, measured in miliseconds,
@@ -133,7 +146,66 @@ uint8_t rotation = 0; // incremented by 1 with each button press - it's used to 
 unsigned long previousMillis = 0;        // will store last time the displays were updated
 unsigned long OBDslowMillis = 0;
 unsigned long OBDfastMillis = 0;
+unsigned long menuMillis = 0;
 //int atmos = 215;                //somewhere to store our startup atmospheric pressure - unused at present
+
+// MENUS
+#define textScale 1
+#define fontX 5
+#define fontY 9
+
+bool inMenu = false;
+
+result quitMenu() {
+  inMenu = false;
+  return proceed;
+}
+
+MENU(setMenu,"Settings",doNothing,anyEvent,wrapStyle
+  ,OP("Save Settings",doNothing,enterEvent)
+  ,OP("Read Settings",doNothing,enterEvent)
+  ,OP("Reset to Defaults",doNothing,enterEvent)
+  ,EXIT("<Back")
+);
+
+MENU(ecuMenu,"ECU",doNothing,anyEvent,wrapStyle
+  ,OP("Read Faults",doNothing,enterEvent)
+  ,OP("Clear Faults",doNothing,enterEvent)
+  ,EXIT("<Back")
+);
+
+MENU(sensorMenu,"Sensors",doNothing,anyEvent,wrapStyle
+  ,OP("Enable/Disable",doNothing,enterEvent)
+  ,OP("Change Order",doNothing,enterEvent)
+  ,OP("Set Warnings",doNothing,enterEvent) 
+  ,EXIT("<Back")
+);
+
+MENU(mainMenu,"Main menu",doNothing,noEvent,wrapStyle
+  ,SUBMENU(sensorMenu)
+  ,SUBMENU(ecuMenu)
+  ,SUBMENU(setMenu)
+  ,OP("<Quit Menu",quitMenu,enterEvent)
+  //,EXIT("<Quit Menu")
+);
+
+const colorDef<uint16_t> colors[] MEMMODE={
+  {{BLACK,WHITE},{BLACK,WHITE,WHITE}},//bgColor
+  {{WHITE,BLACK},{WHITE,BLACK,BLACK}},//fgColor
+  {{WHITE,BLACK},{WHITE,BLACK,BLACK}},//valColor
+  {{WHITE,BLACK},{WHITE,BLACK,BLACK}},//unitColor
+  {{WHITE,BLACK},{BLACK,BLACK,BLACK}},//cursorColor
+  {{WHITE,BLACK},{BLACK,WHITE,WHITE}},//titleColor
+};
+
+MENU_OUTPUTS(out,MAX_DEPTH
+  ,SERIAL_OUT(Serial)
+  ,ADAGFX_OUT(display1,colors,fontX,fontY,{0,0,128/fontX,64/fontY})
+  ,NONE//must have 2 items at least
+);
+
+NAVROOT(nav,mainMenu,MAX_DEPTH,Serial,out);
+// END MENUS
 
 void setup()   {
   //start serial connection
@@ -142,7 +214,7 @@ void setup()   {
   // HC05 init
   delay(500);
   if(Elm.begin() != ELM_SUCCESS) {
- 	for (uint8_t i=9; i < 20; i++) {
+ 	for (uint8_t i=9; i < totalsensors; i++) {
 		Sensors[i].senseactive = false;
 	} 
   }
@@ -197,9 +269,9 @@ void setup()   {
   display8.display();
 
   //configure pin8 as an input and enable the internal pull-up resistor, this is for a button to control the rotation of sensors around the screen
-  pinMode(SELBUT, INPUT_PULLUP);
-  pinMode(LEFTBUT, INPUT_PULLUP);
-  pinMode(RIGHTBUT, INPUT_PULLUP);  
+ // pinMode(SELBUT, INPUT_PULLUP);
+  //pinMode(LEFTBUT, INPUT_PULLUP);
+ // pinMode(RIGHTBUT, INPUT_PULLUP);  
 
   if(!accel.begin()) { //initialise ADXL345
  	Sensors[6].senseactive = false;
@@ -233,11 +305,34 @@ void loop() {
   unsigned long currentMillis = millis(); //store the time
 
   // USER INTERACTION
-  bool butLeftVal = digitalRead(LEFTBUT); // read the button state
-  bool butRightVal = digitalRead(RIGHTBUT); // read the button state
-  
+  //bool butLeftVal = digitalRead(LEFTBUT); // read the button state
+  //bool butRightVal = digitalRead(RIGHTBUT); // read the button state
+  //bool butSelVal = digitalRead(SELBUT); // read the button state
+ 
+	if ((!inMenu) && (btn_enter.sense() == buttons_held)) {
+		inMenu=true;
+	}
+ 
+	if (inMenu) {
+		if (currentMillis - menuMillis > BUT_DELAY) {
+			menuMillis = currentMillis;
+			if (btn_up.sense() == buttons_debounce) {
+				nav.doNav(upCmd);
+				Serial.println("up pressed");
+			} else if (btn_down.sense() == buttons_debounce) {
+				nav.doNav(downCmd);
+			} else if (btn_enter.sense() == buttons_debounce) {
+				nav.doNav(enterCmd);
+			}
+			nav.active().dirty=true;//for a menu
+			nav.navFocus->dirty=true;//should invalidate also full screen fields assert(nav.navFocus!=NULL)
+			nav.poll();//do serial input
+			display1.display();
+			display1.clearDisplay();	
+		}
+	}
   // left rotation requested
-  if (butLeftVal == LOW) { 
+  if (btn_left.sense() == buttons_debounce) { 
     
 	if (currentMillis - previousMillis > BUT_DELAY) {
 	
@@ -257,7 +352,7 @@ void loop() {
   }
   
   // right rotation requested
-  if (butRightVal == LOW) { 
+  if (btn_right.sense() == buttons_debounce) { 
     
 	if (currentMillis - previousMillis > BUT_DELAY) {
 	
@@ -345,7 +440,10 @@ void loop() {
     }
   
       // DRAW DISPLAYS
-    drawDISPLAY(display1, 1);
+  
+	if (!inMenu) {
+		drawDISPLAY(display1, 1);
+	}
     drawDISPLAY(display2, 2);
     drawDISPLAY(display3, 3);
     drawDISPLAY(display4, 4);
@@ -353,7 +451,6 @@ void loop() {
     drawDISPLAY(display6, 7);
     drawDISPLAY(display7, 6);
     drawDISPLAY(display8, 5);
-  
   }
   
 	// 500 millis interval
@@ -410,7 +507,6 @@ void loop() {
 			}
 		}
 	}
-
   }
 
 
@@ -432,7 +528,6 @@ void drawDISPLAY(Adafruit_SSD1306 &refDisp, uint8_t index) { // DISPLAY 1 is our
   
   if (sensor0 == -1) {
   // don't draw anything because there are less sensors than displays
-	Serial.println("blank screen");
   } else if (sensor0 == 8) { // draw compass
     drawCompass(32, 32, 30, refDisp, sensor0);
     drawSensor(15, 20, refDisp, sensor0, false);
@@ -445,7 +540,6 @@ void drawDISPLAY(Adafruit_SSD1306 &refDisp, uint8_t index) { // DISPLAY 1 is our
   } else {
 	drawBIG(refDisp, sensor0);  
   }
-
 refDisp.display();
 refDisp.clearDisplay();
 }
@@ -893,7 +987,6 @@ int readPress(uint8_t sensor, uint8_t index) {
   rawval = analogRead(sensor);       // Read MAP sensor raw value on analog port 0
   kpaval = (rawval * 2.1034)/10;             // convert to kpa
   oilpress = kpaval * 0.145038 - 12.5;  // Convert to psi & subtract atmospheric 12psi (sesnor appears to have ~2.5spi offset from reality)
-  //Serial.println(oilpress);
   // process any faults
   return (processConstraints(DIVISOR / 100, rawval, int(oilpress), index));
 }

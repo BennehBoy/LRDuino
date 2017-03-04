@@ -1,3 +1,9 @@
+Version 0.01
+Renumbered versioning - oops, should've thought longer about this in the first place.
+Included Arduino Menu 3.0 system.
+Removed some unused OBD sensors.
+Added 'Buttons' library & updated user interaction.
+
 Version 0.99
 Functions renamed
 Main loop altered to update certain sensors readings based on frequency of change, this speeds up the main loop when OBD is enabled.
