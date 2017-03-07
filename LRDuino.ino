@@ -2,6 +2,7 @@
 // Version 0.01  (STM32 Only)
 
 #include <Adafruit_SSD1306.h>
+#include <SdFat.h>
 #include "LRDuinoGFX.h"
 #include <Fonts/FreeSansBoldOblique12pt7b.h>
 #include <Fonts/FreeSansBoldOblique24pt7b.h>
@@ -9,23 +10,24 @@
 #include <Adafruit_ADXL345_U.h>
 #include <Adafruit_HMC5883_U.h>
 #include <menu.h>
-#include <menuIO/serialOut.h>
+//#include <menuIO/serialOut.h>
 #include <menuIO/chainStream.h>
 #include <menuIO/adafruitGfxOut.h>
 #include <Buttons.h>
+
 
 using namespace Menu;
 
 #include "ELM327.h"
 
 #define NUM_DISPLAYS 8
-
-#define INTERVAL 250
-#define OBDFAST	400
-#define OBDSLOW	600
-#define BUT_DELAY 100
-#define MAX_DEPTH 2
+#define INTERVAL 	250
+#define OBDFAST		400
+#define OBDSLOW		600
+#define BUT_DELAY 	100
+#define MAX_DEPTH 	3
 #define DIVISOR     4095
+#define MENUTIMEOUT 5000
 
 // Following pinout details are for Maple Mini
 // 1 - TX for Bluetooth
@@ -48,6 +50,7 @@ using namespace Menu;
 #define MAX_CS      PC13	//14
 // PB7 //15 is I2C SDA
 // PB6 //16 is I2C SCL
+#define SD_CS		PB2
 #define OLED_CS     PB5		//17
 #define OLED_CS_2   PB4		//18
 #define OLED_CS_3   PB3		//19
@@ -73,6 +76,8 @@ String RegisterNames[] =   {"CR0", "CR1", "MASK", "CJHF", "CHLF", "LTHFTH", "LTH
 byte RegisterAddresses[] = {0x00,  0x01,   0x02,   0x03,   0x04,   0x04,     0x06,     0x07,     0x08,     0x09 };
 
 Elm327 Elm;
+SdFat sd;
+SdFile sdLogFile;
 
 Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
 Adafruit_HMC5883_Unified mag = Adafruit_HMC5883_Unified(12345);
@@ -114,31 +119,31 @@ typedef struct
   const int sensemaxvals;
   const int8_t senseminvals;
   int sensepeakvals;
-  const int sensewarnhivals;
-  const int sensewarnlowvals;
+  int sensewarnhivals;
+  int sensewarnlowvals;
   const char sensename[13];
 } SingleSensor;
 
-SingleSensor Sensors[14] = {
+SingleSensor Sensors[12] = {
  //active  master slaveID senseorder	warnstatus    sensefault senseglyphs sensevals  units maxvals minvals peakvals warnhivals warnlovals
   {true,   true,  99,     0,			false,        0,         trbBMP,     0,         1,    32,     0,      0,       29,        -999,	"Boost"}, 		// Boost
   {true,   true,  99,     0,			false,        0,         tboxBMP,    0,         0,    150,    -40,    -40,     140,       -999,	"Tbox Temp"}, 	// Transfer Box Temp
   {true,   true,  99,     0,			false,        0,         egtBMP,     0,         0,    900,    -40,    -40,     750,       -999,	"EGT"}, 		// EGT
   {true,   true,  4,      0,			false,        0,         eopBMP,     0,         1,    72,     0,      0,       60,        20,	"Oil Pressure"},// Oil Pressure
   {true,   false, 99,     0,			false,        0,         eotBMP,     0,         0,    150,    -40,    -40,     100,       -999,	"Oil Temp"}, 	// Oil Temp
-  {true,   true,  99,     0,			false,        0,         coollev,    0,         2,    1,      0,      1,       999,       1,	"Coolant Lvl"}, // Coolant Level
-  {true,   true,  7,      0,			false,        0,         D2BMP,      0,         3,    45,     -45,    0,       30,        -30,	"Roll"},  		// Vehicle Roll
-  {true,   false, 99,     0,			false,        0,         D2BMP,      0,         3,    60,     -60,    0,       45,        -45,	"Pitch"},  		// Vehicle Pitch
+  {true,   true,  11,     0,			false,        0,         coollev,    0,         2,    1,      0,      1,       999,       1,	"Coolant Lvl"}, // Coolant Level
+  {true,   true,  7,      0,			false,        0,         D2a0,       0,         3,    45,     -45,    0,       30,        -30,	"Roll"},  		// Vehicle Roll
+  {true,   false, 99,     0,			false,        0,         D2p0,       0,         3,    60,     -60,    0,       45,        -45,	"Pitch"},  		// Vehicle Pitch
   {false,   true,  99,     0,			false,        0,         compass,    0,         3,    360,    0,      0,       999,       -999,	"Compass"}, 	// Magnetometer
-  {true,   true,  99,     0,			false,        0,         Gauge,      750,       4,    4500,   0,      0,       4500,      600,	"RPM (OBD)"},  	// RPM
+  {true,   true,  99,     0,			false,        0,         Gauge,      0,       4,    4500,   0,      0,       4500,      600,	"RPM (OBD)"},  	// RPM
   {true,   true,  99,     0,			false,        0,         Gauge,      0,         5,    100,    -30,    0,       100,       -30,	"Speed (OBD)"}, // Roadspeed
-  {false,   true,  99,     0,			false,        0,         OBDII,      0,         1,    32,     0,      0,       29,        -999,	"MAP (OBD)"},  	// MAP
-  {false,   true,  99,     0,			false,        0,         OBDII,      0,         6,    800,    0,      0,       999,       -999,	"MAF (OBD)"},  	// MAF
-  {true,   true,  99,     0,			false,        0,         OBDII,      0,         0,    130,    -30,    0,       100,       -999,	"Coolant Temp"} // Coolant
+//  {false,   true,  99,     0,			false,        0,         OBDII,      0,         1,    32,     0,      0,       29,        -999,	"MAP (OBD)"},  	// MAP
+//  {false,   true,  99,     0,			false,        0,         OBDII,      0,         6,    800,    0,      0,       999,       -999,	"MAF (OBD)"},  	// MAF
+  {true,   false,  99,     0,			false,        0,         cooltmp,    0,         0,    130,    -30,    0,       100,       -999,	"Coolant Temp"} // Coolant
 };
 
 uint8_t sensecount = 0;
-const uint8_t totalsensors = 14; //this is the actual number of definitions above
+const uint8_t totalsensors = 12; //this is the actual number of definitions above
 uint8_t rotation = 0; // incremented by 1 with each button press - it's used to tell the drawdisplay functions which sensor data they should output.
 
 // the follow variable is a long because the time, measured in miliseconds,
@@ -147,6 +152,8 @@ unsigned long previousMillis = 0;        // will store last time the displays we
 unsigned long OBDslowMillis = 0;
 unsigned long OBDfastMillis = 0;
 unsigned long menuMillis = 0;
+unsigned long inptimeoutMillis = 0;
+
 //int atmos = 215;                //somewhere to store our startup atmospheric pressure - unused at present
 
 // MENUS
@@ -154,7 +161,9 @@ unsigned long menuMillis = 0;
 #define fontX 5
 #define fontY 9
 
-bool inMenu = false;
+bool inMenu = false;   // if true then the menu should be output on display1
+bool dataLog = false;  // if true then we are writing data to SD
+bool sd_present = false; // changes to false if an SD card is inserted at startup
 
 result quitMenu() {
   inMenu = false;
@@ -169,20 +178,108 @@ MENU(setMenu,"Settings",doNothing,anyEvent,wrapStyle
 );
 
 MENU(ecuMenu,"ECU",doNothing,anyEvent,wrapStyle
+  ,OP("Connect to ECU",initOBD,enterEvent)
   ,OP("Read Faults",doNothing,enterEvent)
   ,OP("Clear Faults",doNothing,enterEvent)
   ,EXIT("<Back")
 );
 
-MENU(sensorMenu,"Sensors",doNothing,anyEvent,wrapStyle
-  ,OP("Enable/Disable",doNothing,enterEvent)
-  ,OP("Change Order",doNothing,enterEvent)
-  ,OP("Set Warnings",doNothing,enterEvent) 
+TOGGLE(Sensors[0].senseactive,sensor0Toggle, "Boost: ",getSensecount,enterEvent,wrapStyle//,doExit,enterEvent,noStyle
+  ,VALUE("On",true,doNothing,noEvent)
+  ,VALUE("Off",false,doNothing,noEvent)
+);
+TOGGLE(Sensors[1].senseactive,sensor1Toggle, "Tbox Temp: ",getSensecount,enterEvent,wrapStyle//,doExit,enterEvent,noStyle
+  ,VALUE("On",true,doNothing,noEvent)
+  ,VALUE("Off",false,doNothing,noEvent)
+);
+TOGGLE(Sensors[2].senseactive,sensor2Toggle, "EGT: ",getSensecount,enterEvent,wrapStyle//,doExit,enterEvent,noStyle
+  ,VALUE("On",true,doNothing,noEvent)
+  ,VALUE("Off",false,doNothing,noEvent)
+);
+TOGGLE(Sensors[3].senseactive,sensor3Toggle, "Oil Press/Tmp: ",getSensecount,enterEvent,wrapStyle//,doExit,enterEvent,noStyle
+  ,VALUE("On",true,doNothing,noEvent)
+  ,VALUE("Off",false,doNothing,noEvent)
+);
+TOGGLE(Sensors[5].senseactive,sensor5Toggle, "Coolent Lev: ",getSensecount,enterEvent,wrapStyle//,doExit,enterEvent,noStyle
+  ,VALUE("On",true,doNothing,noEvent)
+  ,VALUE("Off",false,doNothing,noEvent)
+);
+TOGGLE(Sensors[6].senseactive,sensor6Toggle, "Pitch/Roll: ",getSensecount,enterEvent,wrapStyle//,doExit,enterEvent,noStyle
+  ,VALUE("On",true,doNothing,noEvent)
+  ,VALUE("Off",false,doNothing,noEvent)
+);
+TOGGLE(Sensors[8].senseactive,sensor8Toggle, "Compass: ",getSensecount,enterEvent,wrapStyle//,doExit,enterEvent,noStyle
+  ,VALUE("On",true,doNothing,noEvent)
+  ,VALUE("Off",false,doNothing,noEvent)
+);
+TOGGLE(Sensors[9].senseactive,sensor9Toggle, "RPM (OBD): ",getSensecount,enterEvent,wrapStyle//,doExit,enterEvent,noStyle
+  ,VALUE("On",true,doNothing,noEvent)
+  ,VALUE("Off",false,doNothing,noEvent)
+);
+TOGGLE(Sensors[10].senseactive,sensor10Toggle, "Speed (OBD): ",getSensecount,enterEvent,wrapStyle//,doExit,enterEvent,noStyle
+  ,VALUE("On",true,doNothing,noEvent)
+  ,VALUE("Off",false,doNothing,noEvent)
+);
+/* TOGGLE(Sensors[11].senseactive,sensor11Toggle, "MAP (OBD): ",getSensecount,enterEvent,wrapStyle//,doExit,enterEvent,noStyle
+  ,VALUE("On",true,doNothing,noEvent)
+  ,VALUE("Off",false,doNothing,noEvent)
+);
+TOGGLE(Sensors[12].senseactive,sensor12Toggle, "MAF (OBD): ",getSensecount,enterEvent,wrapStyle//,doExit,enterEvent,noStyle
+  ,VALUE("On",true,doNothing,noEvent)
+  ,VALUE("Off",false,doNothing,noEvent)
+); */
+TOGGLE(Sensors[11].senseactive,sensor11Toggle, "ECT (OBD): ",getSensecount,enterEvent,wrapStyle//,doExit,enterEvent,noStyle
+  ,VALUE("On",true,doNothing,noEvent)
+  ,VALUE("Off",false,doNothing,noEvent)
+);
+
+MENU(togsensMenu,"En/Dis(able) Sensors",doNothing,anyEvent,wrapStyle
+	,SUBMENU(sensor0Toggle)
+	,SUBMENU(sensor1Toggle)
+	,SUBMENU(sensor2Toggle)
+	,SUBMENU(sensor3Toggle)
+	,SUBMENU(sensor5Toggle)
+	,SUBMENU(sensor6Toggle)
+	,SUBMENU(sensor8Toggle)
+	,SUBMENU(sensor9Toggle)
+	,SUBMENU(sensor10Toggle)
+	,SUBMENU(sensor11Toggle)
+//	,SUBMENU(sensor12Toggle)
+//	,SUBMENU(sensor13Toggle)
   ,EXIT("<Back")
+);
+
+MENU(lowarnMenu,"Low Warnings",doNothing,anyEvent,wrapStyle
+    ,FIELD(Sensors[3].sensewarnlowvals,"Oil Pressure","psi",Sensors[3].senseminvals,Sensors[3].sensemaxvals,10,1,doNothing,noEvent,wrapStyle)
+  ,EXIT("<Back")
+);
+
+MENU(hiwarnMenu,"High Warnings",doNothing,anyEvent,wrapStyle
+    ,FIELD(Sensors[0].sensewarnhivals,"Boost","psi",Sensors[0].senseminvals,Sensors[0].sensemaxvals,10,1,doNothing,noEvent,wrapStyle)
+    ,FIELD(Sensors[1].sensewarnhivals,"Tbox Temp","C",Sensors[1].senseminvals,Sensors[1].sensemaxvals,10,1,doNothing,noEvent,wrapStyle)
+    ,FIELD(Sensors[2].sensewarnhivals,"EGT","C",Sensors[2].senseminvals,Sensors[2].sensemaxvals,50,10,doNothing,noEvent,wrapStyle)
+    ,FIELD(Sensors[3].sensewarnhivals,"Oil Pressure","psi",Sensors[3].senseminvals,Sensors[3].sensemaxvals,10,1,doNothing,noEvent,wrapStyle)
+    ,FIELD(Sensors[4].sensewarnhivals,"Oil Temp","C",Sensors[4].senseminvals,Sensors[4].sensemaxvals,10,1,doNothing,noEvent,wrapStyle)
+    ,FIELD(Sensors[11].sensewarnhivals,"Coolant Temp","C",Sensors[13].senseminvals,Sensors[13].sensemaxvals,10,1,doNothing,noEvent,wrapStyle)	
+  ,EXIT("<Back")
+);
+
+MENU(sensorMenu,"Sensors",doNothing,anyEvent,wrapStyle
+  ,SUBMENU(togsensMenu)
+  ,OP("Change Order",doNothing,enterEvent)
+  ,SUBMENU(lowarnMenu)
+  ,SUBMENU(hiwarnMenu)
+  ,EXIT("<Back")
+);
+
+TOGGLE(dataLog, dataLogging, "Datalogging: ",toggleDatalog,enterEvent,wrapStyle//,doExit,enterEvent,noStyle
+  ,VALUE("On",true,doNothing,noEvent)
+  ,VALUE("Off",false,doNothing,noEvent)
 );
 
 MENU(mainMenu,"Main menu",doNothing,noEvent,wrapStyle
   ,SUBMENU(sensorMenu)
+  ,SUBMENU(dataLogging)
   ,SUBMENU(ecuMenu)
   ,SUBMENU(setMenu)
   ,OP("<Quit Menu",quitMenu,enterEvent)
@@ -199,7 +296,7 @@ const colorDef<uint16_t> colors[] MEMMODE={
 };
 
 MENU_OUTPUTS(out,MAX_DEPTH
-  ,SERIAL_OUT(Serial)
+//  ,SERIAL_OUT(Serial)
   ,ADAGFX_OUT(display1,colors,fontX,fontY,{0,0,128/fontX,64/fontY})
   ,NONE//must have 2 items at least
 );
@@ -210,14 +307,6 @@ NAVROOT(nav,mainMenu,MAX_DEPTH,Serial,out);
 void setup()   {
   //start serial connection
   Serial.begin(9600);  //uncomment to send serial debug info
-
-  // HC05 init
-  delay(500);
-  if(Elm.begin() != ELM_SUCCESS) {
- 	for (uint8_t i=9; i < totalsensors; i++) {
-		Sensors[i].senseactive = false;
-	} 
-  }
 
   // Pin setup
   pinMode (OLED_CS, OUTPUT);
@@ -238,7 +327,9 @@ void setup()   {
   digitalWrite(OLED_CS_8, HIGH);
   pinMode (MAX_CS, OUTPUT);
   digitalWrite(MAX_CS, HIGH);
-
+  pinMode (SD_CS, OUTPUT);
+  digitalWrite(SD_CS, HIGH);
+  
   MAXInitializeChannel(MAX_CS); // Init the MAX31856 
 
   display1.begin(SSD1306_SWITCHCAPVCC, SSD1306_I2C_ADDRESS, true); //construct our displays
@@ -259,7 +350,7 @@ void setup()   {
   display7.clearDisplay();   // clears the screen and buffer
   display8.clearDisplay();   // clears the screen and buffer
 
-  display1.display();
+  display1.display(); //output to the screen to avoid adafruit logo
   display2.display();
   display3.display();
   display4.display();
@@ -268,11 +359,24 @@ void setup()   {
   display7.display();
   display8.display();
 
-  //configure pin8 as an input and enable the internal pull-up resistor, this is for a button to control the rotation of sensors around the screen
- // pinMode(SELBUT, INPUT_PULLUP);
-  //pinMode(LEFTBUT, INPUT_PULLUP);
- // pinMode(RIGHTBUT, INPUT_PULLUP);  
-
+  // Ensure #define ENABLE_SPI_TRANSACTIONS 1 is set in SdFatConfig.h
+  if (!sd.begin(SD_CS, SPI_CLOCK_DIV2))
+  {
+	  
+	display1.setTextColor(WHITE);
+	display1.setTextSize(1);
+    display1.setCursor(0, 0); 
+    display1.println("SD init failed...   ");
+	display1.display();
+	delay(1000);
+    sd_present = false;
+  }
+  else
+  {
+    sd_present = true;    
+  }
+  
+  
   if(!accel.begin()) { //initialise ADXL345
  	Sensors[6].senseactive = false;
 	Sensors[7].senseactive = false;
@@ -287,17 +391,111 @@ void setup()   {
   // read our boost sensor rawADC value since at this point it should be atmospheric pressure...
   //atmos = readBoost(0,0);  // not actually used at this point so could be rmeoved
 
-  // count the number of active sensors
-  for (uint8_t thisSensor = 0; thisSensor < totalsensors; thisSensor++) {
-    if (Sensors[thisSensor].senseactive == true && Sensors[thisSensor].master == true) { // don't count slaves
-      sensecount++;
-    }
-  }
+  // HC05 init
+  delay(500);
+  
+  initOBD(); // this also fires getSensecount()
+
 
   // set up our analogue inputs on STM32
-  for (int x = 7; x < 12; x++) {
+  for (int x = 7; x < 11; x++) {
     pinMode(x, INPUT_ANALOG);
   }
+}
+
+void initOBD(void) {
+	if(Elm.begin() != ELM_SUCCESS) {
+		disableOBDSensors();
+	} else {
+		for (uint8_t i=9; i < totalsensors; i++) {
+			Sensors[i].senseactive = true;
+		}
+		getSensecount();
+	}
+	
+}
+
+void disableOBDSensors(void) {
+		for (uint8_t i=9; i < totalsensors; i++) {
+			Sensors[i].senseactive = false;
+		}
+	getSensecount();
+}
+
+void getSensecount(void) {
+	sensecount=0;
+	for (uint8_t thisSensor = 0; thisSensor < totalsensors; thisSensor++) {
+		if (Sensors[thisSensor].senseactive == true && Sensors[thisSensor].master == true) { // don't count slaves
+			sensecount++;
+		}
+	}
+}
+
+void toggleDatalog(void) {
+	// do some SD stuff.
+	if(sd_present && dataLog) {
+		
+
+		if(sd_present) {	
+			char file_name[] = "data_00.csv";
+			// if name exists, create new filename
+			for (int i=0; i<100; i++) {
+				file_name[5] = i/10 + '0';
+				file_name[6] = i%10 + '0';
+				if (sdLogFile.open(file_name, O_CREAT | O_EXCL | O_WRITE)) {
+					break;
+				}
+			}
+
+			if (sdLogFile.isOpen()) {
+				sdLogFile.println("LRDuino data Log file");sdLogFile.println();
+				sdLogFile.print(Sensors[0].sensename);sdLogFile.print(";");			
+				sdLogFile.print(Sensors[1].sensename);sdLogFile.print(";");
+				sdLogFile.print(Sensors[2].sensename);sdLogFile.print(";");
+				sdLogFile.print(Sensors[3].sensename);sdLogFile.print(";");
+				sdLogFile.print(Sensors[4].sensename);sdLogFile.print(";");
+				sdLogFile.print(Sensors[5].sensename);sdLogFile.print(";");
+				sdLogFile.print(Sensors[6].sensename);sdLogFile.print(";");
+				sdLogFile.print(Sensors[7].sensename);sdLogFile.print(";");
+				sdLogFile.print(Sensors[8].sensename);sdLogFile.print(";");
+				sdLogFile.print(Sensors[9].sensename);sdLogFile.print(";");
+				sdLogFile.print(Sensors[10].sensename);sdLogFile.print(";");
+				sdLogFile.print(Sensors[11].sensename);sdLogFile.print(";");
+				sdLogFile.print(Sensors[12].sensename);sdLogFile.print(";");
+				sdLogFile.print(Sensors[13].sensename);sdLogFile.println(";");
+			} else { //file open failed
+				dataLog = false;
+				Serial.println("failed to open file");
+			}
+		}
+	
+	// open the file and write the header
+	} else if (sd_present && !dataLog) {
+	// close the file
+		if (sdLogFile.isOpen())	{ 
+			sdLogFile.close();
+		}
+	}
+}
+
+void writeDatalogline(void) {
+	// write a line to the datalog
+	if (sdLogFile.isOpen()) { 
+		sdLogFile.print(Sensors[0].sensevals);sdLogFile.print(";");			
+		sdLogFile.print(Sensors[1].sensevals);sdLogFile.print(";");
+		sdLogFile.print(Sensors[2].sensevals);sdLogFile.print(";");
+		sdLogFile.print(Sensors[3].sensevals);sdLogFile.print(";");
+		sdLogFile.print(Sensors[4].sensevals);sdLogFile.print(";");
+		sdLogFile.print(Sensors[5].sensevals);sdLogFile.print(";");
+		sdLogFile.print(Sensors[6].sensevals);sdLogFile.print(";");
+		sdLogFile.print(Sensors[7].sensevals);sdLogFile.print(";");
+		sdLogFile.print(Sensors[8].sensevals);sdLogFile.print(";");
+		sdLogFile.print(Sensors[9].sensevals);sdLogFile.print(";");
+		sdLogFile.print(Sensors[10].sensevals);sdLogFile.print(";");
+		sdLogFile.print(Sensors[11].sensevals);sdLogFile.print(";");
+		sdLogFile.print(Sensors[12].sensevals);sdLogFile.print(";");
+		sdLogFile.print(Sensors[13].sensevals);sdLogFile.println(";");
+	} 
 }
 
 void loop() {
@@ -305,24 +503,28 @@ void loop() {
   unsigned long currentMillis = millis(); //store the time
 
   // USER INTERACTION
-  //bool butLeftVal = digitalRead(LEFTBUT); // read the button state
-  //bool butRightVal = digitalRead(RIGHTBUT); // read the button state
-  //bool butSelVal = digitalRead(SELBUT); // read the button state
+ 
+	if(currentMillis - inptimeoutMillis > MENUTIMEOUT) {  //timeout the menu 
+		inMenu=false;
+	}
  
 	if ((!inMenu) && (btn_enter.sense() == buttons_held)) {
-		inMenu=true;
+		inMenu=true; // turn the menu on if we have a long press on the enter button
+		inptimeoutMillis = currentMillis;
 	}
  
 	if (inMenu) {
 		if (currentMillis - menuMillis > BUT_DELAY) {
 			menuMillis = currentMillis;
 			if (btn_up.sense() == buttons_debounce) {
-				nav.doNav(upCmd);
-				Serial.println("up pressed");
+				nav.doNav(upCmd); // navigate up
+				inptimeoutMillis = currentMillis;
 			} else if (btn_down.sense() == buttons_debounce) {
-				nav.doNav(downCmd);
+				nav.doNav(downCmd); // navigate down
+				inptimeoutMillis = currentMillis;
 			} else if (btn_enter.sense() == buttons_debounce) {
-				nav.doNav(enterCmd);
+				nav.doNav(enterCmd); // do current command
+				inptimeoutMillis = currentMillis;
 			}
 			nav.active().dirty=true;//for a menu
 			nav.navFocus->dirty=true;//should invalidate also full screen fields assert(nav.navFocus!=NULL)
@@ -435,11 +637,15 @@ void loop() {
       Sensors[9].sensevals = intRPM;
 
       if (status != ELM_SUCCESS) {
-        // do something
+        //disableOBDSensors();
       }
     }
   
-      // DRAW DISPLAYS
+	if(dataLog == true) {
+		writeDatalogline();  // write out the last readings if we're logging
+	}
+	
+    // DRAW DISPLAYS
   
 	if (!inMenu) {
 		drawDISPLAY(display1, 1);
@@ -454,7 +660,7 @@ void loop() {
   }
   
 	// 500 millis interval
- 	if (currentMillis - OBDfastMillis > OBDFAST) { // only read the sensors and draw the screen if 250 millis have passed
+ 	if (currentMillis - OBDfastMillis > OBDFAST) { // only read these sensors if 400 millis have passed
 		// save the last time we updated
 		OBDfastMillis = currentMillis;
 		
@@ -465,36 +671,37 @@ void loop() {
 			Sensors[11].sensevals = int(intMAP);
 
 			if (status != ELM_SUCCESS) {
-				// do something
+				//disableOBDSensors();
 			}
 		}
 		
-	 	if (Sensors[12].senseactive) {
+/* 	 	if (Sensors[12].senseactive) {
 			unsigned int intMAF = 0;
 			int status;
 			status = Elm.MAFAirFlowRate(intMAF);
 			Sensors[12].sensevals = int(intMAF);
 
 			if (status != ELM_SUCCESS) {
-				// do something
+				disableOBDSensors();
 			}
-		}
+		} */
 	}
 
 	// 1000 Millis interval
-	if (currentMillis - OBDslowMillis > OBDSLOW) { // only read the sensors and draw the screen if 250 millis have passed
+	if (currentMillis - OBDslowMillis > OBDSLOW) { // only read these sensors if 600 millis have passed
 		// save the last time we updated
 		OBDslowMillis = currentMillis;
- 		if (Sensors[13].senseactive) {
+/*  		if (Sensors[13].senseactive) {
 			int intECT = 0;
 			int status;
 			status = Elm.coolantTemperature(intECT);
 			Sensors[13].sensevals = intECT;
 
 			if (status != ELM_SUCCESS) {
-				// do something
+				disableOBDSensors();
 			}
-		}
+			audibleWARN(13);
+		} */
 		
 		if (Sensors[10].senseactive) {
 			byte intMPH = 0;
@@ -503,12 +710,12 @@ void loop() {
 			Sensors[10].sensevals = int(intMPH);
 
 			if (status != ELM_SUCCESS) {
-				// do something
+				//disableOBDSensors();
 			}
 		}
 	}
-  }
 
+  }
 
 // 4 screens - use index values like this to rotate around the displays
 // 1 2
@@ -544,9 +751,6 @@ refDisp.display();
 refDisp.clearDisplay();
 }
 
-
-// Helper Functions
-
 void drawSensor(uint8_t y, uint8_t x, Adafruit_SSD1306 &refDisp, uint8_t sensor, bool icons) {
   uint8_t xoffset = 0;
   String temp;
@@ -565,48 +769,26 @@ void drawSensor(uint8_t y, uint8_t x, Adafruit_SSD1306 &refDisp, uint8_t sensor,
 
   if (sensor == 6) { // INCLINOMETER ONLY (ANIMATED)
     rolltemp = Sensors[sensor].sensevals;
-    if (rolltemp > -5 && rolltemp < 5) { // centred
+    if (rolltemp > -10 && rolltemp < 10) { // centred
       refDisp.drawBitmap(0, y, D2a0, 32, 32, WHITE);
-    } else if (rolltemp > -10 && rolltemp <= -5) { //-5 deg
-      refDisp.drawBitmap(0, y, D2a5L, 32, 32, WHITE);
-    } else if (rolltemp > -15 && rolltemp <= -10) { //-10 deg
+    } else if (rolltemp > -20 && rolltemp <= -10) { //-10 deg
       refDisp.drawBitmap(0, y, D2a10L, 32, 32, WHITE);
-    } else if (rolltemp > -20 && rolltemp <= -15) { //-15 deg
-      refDisp.drawBitmap(0, y, D2a15L, 32, 32, WHITE);
-    } else if (rolltemp > -25 && rolltemp <= -20) { //-20 deg
+    } else if (rolltemp > -30 && rolltemp <= -20) { //-20 deg
       refDisp.drawBitmap(0, y, D2a20L, 32, 32, WHITE);
-    } else if (rolltemp > -30 && rolltemp <= -25) { //-25 deg
-      refDisp.drawBitmap(0, y, D2a25L, 32, 32, WHITE);
-    } else if (rolltemp > -35 && rolltemp <= -30) { //-30 deg
+    } else if (rolltemp > -40 && rolltemp <= -30) { //-30 deg
       refDisp.drawBitmap(0, y, D2a30L, 32, 32, WHITE);
-    } else if (rolltemp > -40 && rolltemp <= -35) { //-35 deg
-      refDisp.drawBitmap(0, y, D2a35L, 32, 32, WHITE);
-    } else if (rolltemp > -45 && rolltemp <= -40) { //-40 deg
+    } else if (rolltemp > -50 && rolltemp <= -40) { //-40 deg
       refDisp.drawBitmap(0, y, D2a40L, 32, 32, WHITE);
-    } else if (rolltemp > -50 && rolltemp <= -45) { //-45 deg
-      refDisp.drawBitmap(0, y, D2a45L, 32, 32, WHITE);
-
-    } else if (rolltemp >= 5 && rolltemp < 10) { //5 deg
-      refDisp.drawBitmap(0, y, D2a5R, 32, 32, WHITE);
-    } else if (rolltemp >= 10 && rolltemp < 15) { //10 deg
+    } else if (rolltemp >= 10 && rolltemp < 20) { //10 deg
       refDisp.drawBitmap(0, y, D2a10R, 32, 32, WHITE);
-    } else if (rolltemp >= 15 && rolltemp < 20) { //20 deg
-      refDisp.drawBitmap(0, y, D2a15R, 32, 32, WHITE);
-    } else if (rolltemp >= 20 && rolltemp < 25) { //20 deg
+    } else if (rolltemp >= 20 && rolltemp < 30) { //20 deg
       refDisp.drawBitmap(0, y, D2a20R, 32, 32, WHITE);
-    } else if (rolltemp >= 25 && rolltemp < 30) { //25 deg
-      refDisp.drawBitmap(0, y, D2a25R, 32, 32, WHITE);
-    } else if (rolltemp >= 30 && rolltemp < 35) { //30 deg
+    } else if (rolltemp >= 30 && rolltemp < 40) { //30 deg
       refDisp.drawBitmap(0, y, D2a30R, 32, 32, WHITE);
-    } else if (rolltemp >= 35 && rolltemp < 40) { //35 deg
-      refDisp.drawBitmap(0, y, D2a35R, 32, 32, WHITE);
-    } else if (rolltemp >= 40 && rolltemp < 45) { //40 deg
+    } else if (rolltemp >= 40 && rolltemp < 50) { //40 deg
       refDisp.drawBitmap(0, y, D2a40R, 32, 32, WHITE);
-    } else if (rolltemp >= 45 && rolltemp < 50) { //45 deg
-      refDisp.drawBitmap(0, y, D2a45R, 32, 32, WHITE);
-
       // WARNING CASE
-    } else if (rolltemp < -45 || rolltemp > 45) { // WARNING!
+    } else if (rolltemp <= -50 || rolltemp >= 50) { // WARNING!
       refDisp.drawBitmap(0, y, D2aWARN, 32, 32, WHITE);
     }
 
@@ -626,7 +808,6 @@ void drawSensor(uint8_t y, uint8_t x, Adafruit_SSD1306 &refDisp, uint8_t sensor,
       refDisp.drawBitmap(0, y, D2p50L, 32, 32, WHITE);
     } else if (rolltemp > -70 && rolltemp <= -60) { //-60 deg
       refDisp.drawBitmap(0, y, D2p60L, 32, 32, WHITE);
-
     } else if (rolltemp >= 10 && rolltemp < 20) { //10 deg
       refDisp.drawBitmap(0, y, D2p10R, 32, 32, WHITE);
     } else if (rolltemp >= 20 && rolltemp < 30) { //20 deg
@@ -639,7 +820,6 @@ void drawSensor(uint8_t y, uint8_t x, Adafruit_SSD1306 &refDisp, uint8_t sensor,
       refDisp.drawBitmap(0, y, D2p50R, 32, 32, WHITE);
     } else if (rolltemp >= 60 && rolltemp < 70) { //60 deg
       refDisp.drawBitmap(0, y, D2p60R, 32, 32, WHITE);
-
       // WARNING CASE
     } else if (rolltemp < -60 || rolltemp > 60) { // WARNING!
       if (icons) {
@@ -883,8 +1063,13 @@ String getValIfNoErr(uint8_t sensor) { //prevents values being displayed if we a
 }
 
 int8_t processRotation(uint8_t location) { // this is used to shift our array of data around the screens
+  
+  if (sensecount == 0) { // all screens will be blank in this case so just return -1
+	  return(-1);
+  }
+  
   uint8_t count = 0;
-  uint8_t dimension =0;
+  uint8_t dimension = 0;
   if (sensecount < NUM_DISPLAYS) {
 	dimension=NUM_DISPLAYS;
   } else {
@@ -953,7 +1138,6 @@ int readERR2081(uint8_t sensor, uint8_t index) {
   // Sensors should be connected with a 1K pulldown resistor - if there's is a connection fault a low raw read will indicate this.
   return (processConstraints(DIVISOR / 100, raw, int(steinhart), index));
 }
-
 
 int readBoost(uint8_t sensor, uint8_t index) {
   int rawval;
@@ -1052,7 +1236,6 @@ bool readCoolantLevel(uint8_t sensor, uint8_t index) {
 }
 
 // MAX31856 SPI CODE
-
 
 void MAXInitializeChannel(int Pin) {
   for (int i = 0; i < NumRegisters; i++) {

@@ -1,3 +1,11 @@
+Version 0.02
+Thinned down the inclinometer animation frames to save memory
+Added datalogging to SD (works but requires a GPIO pin - will be adding CS multiplexing soon to free this up)
+Enable/disable & Warning Menus now work
+Added 'Connect to ECU' option to initialise OBD if it failed at startup time
+Any OBD read errors disable all OBD sensors (re-enable menu items become disabled).
+5s Menu timeout
+
 Version 0.01
 Renumbered versioning - oops, should've thought longer about this in the first place.
 Included Arduino Menu 3.0 system.
